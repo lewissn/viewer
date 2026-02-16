@@ -47,11 +47,15 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   const [showEdges, setShowEdges] = useState(false);
   const [edgeColor, setEdgeColor] = useState(DEFAULT_EDGE_COLOR);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hdriActive, setHdriActive] = useState(false);
+  const [hdriFileName, setHdriFileName] = useState("");
 
   // Track hidden mesh instance IDs (using the o3dv internal mesh instance references)
   const hiddenMeshInstances = useRef<Set<any>>(new Set());
   const doorsVisibleRef = useRef(true);
   const selectedUserData = useRef<any>(null);
+  const hdriInputRef = useRef<HTMLInputElement>(null);
+  const envTextureRef = useRef<any>(null);
 
   // --- Highlight helper ---
   function applyHighlight(userData: any | null) {
@@ -200,6 +204,79 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     viewer.Render();
   }
 
+  // --- HDRI environment lighting ---
+  async function loadHdri(file: File) {
+    const viewer = viewerRef.current?.GetViewer();
+    if (!viewer) return;
+
+    const THREE = await import("three");
+    const { RGBELoader } = await import("three/examples/jsm/loaders/RGBELoader.js");
+
+    const blobUrl = URL.createObjectURL(file);
+    const loader = new RGBELoader();
+
+    loader.load(blobUrl, (texture) => {
+      URL.revokeObjectURL(blobUrl);
+
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+
+      const pmrem = new THREE.PMREMGenerator(viewer.renderer);
+      pmrem.compileEquirectangularShader();
+      const envMap = pmrem.fromEquirectangular(texture).texture;
+      pmrem.dispose();
+      texture.dispose();
+
+      // Clean up previous HDRI
+      if (envTextureRef.current) {
+        envTextureRef.current.dispose();
+      }
+      envTextureRef.current = envMap;
+
+      // Apply to scene — lighting only, no background
+      viewer.scene.environment = envMap;
+      viewer.scene.background = null;
+
+      // Upgrade Phong materials to Standard so IBL takes effect
+      viewer.scene.traverse((obj: any) => {
+        if (!obj.isMesh) return;
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        const upgraded = materials.map((mat: any) => {
+          if (mat.type !== "MeshPhongMaterial") return mat;
+          const std = new THREE.MeshStandardMaterial({
+            color: mat.color,
+            map: mat.map,
+            normalMap: mat.normalMap,
+            opacity: mat.opacity,
+            transparent: mat.transparent,
+            side: mat.side,
+            roughness: 0.5,
+            metalness: 0.0,
+          });
+          return std;
+        });
+        obj.material = Array.isArray(obj.material) ? upgraded : upgraded[0];
+      });
+
+      viewer.Render();
+      setHdriActive(true);
+      setHdriFileName(file.name);
+    });
+  }
+
+  function removeHdri() {
+    const viewer = viewerRef.current?.GetViewer();
+    if (!viewer) return;
+
+    if (envTextureRef.current) {
+      envTextureRef.current.dispose();
+      envTextureRef.current = null;
+    }
+    viewer.scene.environment = null;
+    viewer.Render();
+    setHdriActive(false);
+    setHdriFileName("");
+  }
+
   // --- Control handlers ---
 
   function toggleDoors() {
@@ -317,6 +394,24 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
             />
           </label>
         )}
+      </div>
+
+      {/* HDRI lighting */}
+      <div className="flex items-center gap-1">
+        <ControlButton
+          onClick={() => {
+            if (hdriActive) {
+              removeHdri();
+            } else {
+              hdriInputRef.current?.click();
+            }
+          }}
+          active={hdriActive}
+          title={hdriActive ? `Remove HDRI (${hdriFileName})` : "Load HDRI Lighting"}
+          label="HDRI"
+        >
+          <HdriIcon />
+        </ControlButton>
       </div>
 
       <ControlButton
@@ -464,6 +559,19 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
         ref={containerRef}
         className="w-full h-full"
         style={{ visibility: loading || loadError ? "hidden" : "visible" }}
+      />
+
+      {/* Hidden HDRI file input */}
+      <input
+        ref={hdriInputRef}
+        type="file"
+        accept=".hdr"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) loadHdri(file);
+          e.target.value = "";
+        }}
       />
     </div>
   );
@@ -656,6 +764,24 @@ function FullscreenIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+      />
+    </svg>
+  );
+}
+
+function HdriIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
       />
     </svg>
   );
