@@ -202,39 +202,10 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     const newVisible = !doorsVisible;
     setDoorsVisible(newVisible);
 
-    // Collect door nodes first, then enumerate mesh instances once
-    const doorNodes = new Set<any>();
-    const rootNode = model.GetRootNode();
-    const nodeStack: any[] = [rootNode];
-
-    while (nodeStack.length > 0) {
-      const node = nodeStack.pop();
-      const name = node.GetName() || "";
-
-      if (DOOR_PATTERN.test(name)) {
-        doorNodes.add(node);
-        // Also add all descendant nodes of a door node
-        const descStack: any[] = [];
-        for (let c = 0; c < node.ChildNodeCount(); c++) {
-          descStack.push(node.GetChildNode(c));
-        }
-        while (descStack.length > 0) {
-          const desc = descStack.pop();
-          doorNodes.add(desc);
-          for (let c = 0; c < desc.ChildNodeCount(); c++) {
-            descStack.push(desc.GetChildNode(c));
-          }
-        }
-      }
-
-      for (let c = 0; c < node.ChildNodeCount(); c++) {
-        nodeStack.push(node.GetChildNode(c));
-      }
-    }
-
-    // Single pass over mesh instances
+    // Check each mesh instance's node name directly against the pattern
     model.EnumerateMeshInstances((mi: any) => {
-      if (doorNodes.has(mi.node)) {
+      const name = mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+      if (DOOR_PATTERN.test(name)) {
         if (newVisible) {
           hiddenMeshInstances.current.delete(mi);
         } else {
