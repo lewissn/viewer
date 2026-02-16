@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Image from "next/image";
 
 /** Regex to detect "door" parts — extend this pattern as needed */
 const DOOR_PATTERN = /\bdoor\b/i;
@@ -379,10 +380,15 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 pointer-events-none">
         {/* Left: branding */}
         <div className="pointer-events-auto">
-          <div className="backdrop-blur-xl bg-white/70 rounded-xl px-4 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.08)]">
-            <span className="text-[13px] font-semibold text-[#1d1d1f] tracking-tight">
-              The Cabinet Shop
-            </span>
+          <div className="backdrop-blur-xl bg-white/70 rounded-xl px-4 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.08)] flex items-center">
+            <Image
+              src="/logo.png"
+              alt="The Cabinet Shop"
+              width={120}
+              height={32}
+              className="h-6 w-auto"
+              priority
+            />
             <span className="ml-2 text-[12px] text-[#86868b]">
               Job #{jobNumber}
             </span>
