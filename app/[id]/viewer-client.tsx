@@ -50,6 +50,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
   // Track hidden mesh instance IDs (using the o3dv internal mesh instance references)
   const hiddenMeshInstances = useRef<Set<any>>(new Set());
+  const doorsVisibleRef = useRef(true);
   const selectedUserData = useRef<any>(null);
 
   // --- Highlight helper ---
@@ -175,7 +176,13 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
     viewer.SetMeshesVisibility((userData: any) => {
       if (!userData?.originalMeshInstance) return true;
-      return !hiddenMeshInstances.current.has(userData.originalMeshInstance);
+      if (hiddenMeshInstances.current.has(userData.originalMeshInstance)) return false;
+      if (!doorsVisibleRef.current) {
+        const mi = userData.originalMeshInstance;
+        const name = mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+        if (DOOR_PATTERN.test(name)) return false;
+      }
+      return true;
     });
     viewer.Render();
   }
@@ -196,24 +203,9 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   // --- Control handlers ---
 
   function toggleDoors() {
-    const model = viewerRef.current?.GetModel();
-    if (!model) return;
-
     const newVisible = !doorsVisible;
     setDoorsVisible(newVisible);
-
-    // Check each mesh instance's node name directly against the pattern
-    model.EnumerateMeshInstances((mi: any) => {
-      const name = mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-      if (DOOR_PATTERN.test(name)) {
-        if (newVisible) {
-          hiddenMeshInstances.current.delete(mi);
-        } else {
-          hiddenMeshInstances.current.add(mi);
-        }
-      }
-    });
-
+    doorsVisibleRef.current = newVisible;
     applyVisibility();
   }
 
@@ -233,6 +225,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   function showAll() {
     hiddenMeshInstances.current.clear();
     setDoorsVisible(true);
+    doorsVisibleRef.current = true;
     applyVisibility();
   }
 
