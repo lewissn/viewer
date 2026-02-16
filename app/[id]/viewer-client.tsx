@@ -47,17 +47,14 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   const [showEdges, setShowEdges] = useState(false);
   const [edgeColor, setEdgeColor] = useState(DEFAULT_EDGE_COLOR);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [measureMode, setMeasureMode] = useState(false);
-  const [measurePoints, setMeasurePoints] = useState<{ x: number; y: number; z: number }[]>([]);
-  const [showCameraMenu, setShowCameraMenu] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(-1);
 
   // Track hidden mesh instance IDs (using the o3dv internal mesh instance references)
   const hiddenMeshInstances = useRef<Set<any>>(new Set());
   const doorsVisibleRef = useRef(true);
   const selectedUserData = useRef<any>(null);
-  const measureModeRef = useRef(false);
-  const measurePointsRef = useRef<{ x: number; y: number; z: number }[]>([]);
+  const darkModeRef = useRef(false);
 
   // --- Highlight helper ---
   function applyHighlight(userData: any | null) {
@@ -107,28 +104,6 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     viewer.SetMouseClickHandler(
       (button: number, mouseCoords: { x: number; y: number }) => {
         if (button !== 1) return;
-
-        // Measure mode: capture intersection points instead of selecting
-        if (measureModeRef.current) {
-          const intersection = viewer.GetMeshIntersectionUnderMouse(
-            OV.IntersectionMode.MeshOnly,
-            mouseCoords
-          );
-          if (intersection && intersection.point) {
-            const p = intersection.point;
-            const current = measurePointsRef.current;
-            if (current.length >= 2) {
-              const updated = [{ x: p.x, y: p.y, z: p.z }];
-              measurePointsRef.current = updated;
-              setMeasurePoints(updated);
-            } else {
-              const updated = [...current, { x: p.x, y: p.y, z: p.z }];
-              measurePointsRef.current = updated;
-              setMeasurePoints(updated);
-            }
-          }
-          return;
-        }
 
         const userData = viewer.GetMeshUserDataUnderMouse(
           OV.IntersectionMode.MeshOnly,
@@ -296,70 +271,22 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     }
   }
 
-  // --- Measure helpers ---
-  function toggleMeasure() {
-    const next = !measureMode;
-    setMeasureMode(next);
-    measureModeRef.current = next;
-    if (!next) {
-      measurePointsRef.current = [];
-      setMeasurePoints([]);
-    } else {
-      applyHighlight(null);
-      setSelectedPart(null);
-      setHasSelection(false);
-      selectedUserData.current = null;
-    }
-  }
+  // --- Dark mode ---
+  function toggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+    darkModeRef.current = next;
 
-  function clearMeasure() {
-    measurePointsRef.current = [];
-    setMeasurePoints([]);
-  }
-
-  // --- Camera presets ---
-  function setCameraPreset(preset: string) {
-    const viewer = viewerRef.current?.GetViewer();
     const OV = ovRef.current;
+    const viewer = viewerRef.current?.GetViewer();
     if (!viewer || !OV) return;
-    const sphere = viewer.GetBoundingSphere(false);
-    if (!sphere) return;
 
-    const c = sphere.center;
-    const r = sphere.radius;
-    const d = r * 2.5;
-
-    let eye: any;
-    let up: any;
-    switch (preset) {
-      case "front":
-        eye = new OV.Coord3D(c.x, c.y, c.z + d);
-        up = new OV.Coord3D(0, 1, 0);
-        break;
-      case "back":
-        eye = new OV.Coord3D(c.x, c.y, c.z - d);
-        up = new OV.Coord3D(0, 1, 0);
-        break;
-      case "left":
-        eye = new OV.Coord3D(c.x - d, c.y, c.z);
-        up = new OV.Coord3D(0, 1, 0);
-        break;
-      case "right":
-        eye = new OV.Coord3D(c.x + d, c.y, c.z);
-        up = new OV.Coord3D(0, 1, 0);
-        break;
-      case "top":
-        eye = new OV.Coord3D(c.x, c.y + d, c.z);
-        up = new OV.Coord3D(0, 0, -1);
-        break;
-      default:
-        return;
+    if (next) {
+      viewer.SetBackgroundColor(new OV.RGBAColor(30, 30, 30, 255));
+    } else {
+      viewer.SetBackgroundColor(new OV.RGBAColor(250, 250, 250, 255));
     }
-
-    const center = new OV.Coord3D(c.x, c.y, c.z);
-    const camera = new OV.Camera(eye, center, up, 45);
-    viewer.navigation.MoveCamera(camera, 40);
-    setShowCameraMenu(false);
+    viewer.Render();
   }
 
   // --- Tutorial ---
@@ -368,8 +295,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     { title: "Toggle Doors", description: "Show or hide door components to see inside your cabinets." },
     { title: "Select & Hide", description: "Click any part to select it. Hide individual parts, or show all to restore everything." },
     { title: "Edge Display", description: "Toggle wireframe edges and customise their colour for better clarity." },
-    { title: "Measure", description: "Click two points on the model to see the X, Y, and Z axis distances between them." },
-    { title: "Camera Views", description: "Jump to preset camera angles \u2014 Front, Back, Left, Right, or Top \u2014 with smooth transitions." },
+    { title: "Dark Mode", description: "Switch between a light and dark background to suit your preference." },
     { title: "You\u2019re all set!", description: "Rotate: left-drag. Pan: right-drag. Zoom: scroll wheel. Enjoy!" },
   ];
 
@@ -442,38 +368,13 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       </div>
 
       <ControlButton
-        onClick={toggleMeasure}
-        active={measureMode}
-        title="Measure"
-        label="Measure"
+        onClick={toggleDarkMode}
+        active={darkMode}
+        title={darkMode ? "Light Mode" : "Dark Mode"}
+        label={darkMode ? "Light" : "Dark"}
       >
-        <MeasureIcon />
+        {darkMode ? <SunIcon /> : <MoonIcon />}
       </ControlButton>
-
-      {/* Camera presets */}
-      <div className="relative">
-        <ControlButton
-          onClick={() => setShowCameraMenu(!showCameraMenu)}
-          active={showCameraMenu}
-          title="Camera Views"
-          label="Views"
-        >
-          <CameraViewIcon />
-        </ControlButton>
-        {showCameraMenu && (
-          <div className="absolute top-full mt-1.5 right-0 backdrop-blur-xl bg-white/90 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] p-1.5 min-w-[100px] z-50">
-            {["Front", "Back", "Left", "Right", "Top"].map((p) => (
-              <button
-                key={p}
-                onClick={() => setCameraPreset(p.toLowerCase())}
-                className="w-full px-3 py-1.5 rounded-lg text-[13px] text-[#1d1d1f] hover:bg-[#0071e3]/10 text-left transition-colors"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       <ControlButton
         onClick={toggleFullscreen}
@@ -569,7 +470,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       )}
 
       {/* Selected part info chip */}
-      {selectedPart && !measureMode && (
+      {selectedPart && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 backdrop-blur-xl bg-white/80 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] px-5 py-3.5 max-w-[90vw]">
           <p className="text-[14px] font-semibold text-[#1d1d1f] truncate">
             {selectedPart.name}
@@ -578,33 +479,6 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
             {selectedPart.width} &times; {selectedPart.height} &times;{" "}
             {selectedPart.depth} mm
           </p>
-        </div>
-      )}
-
-      {/* Measure mode chip */}
-      {measureMode && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 backdrop-blur-xl bg-white/80 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] px-5 py-3.5 max-w-[90vw]">
-          {measurePoints.length === 0 && (
-            <p className="text-[14px] text-[#424245]">Click first point on the model</p>
-          )}
-          {measurePoints.length === 1 && (
-            <p className="text-[14px] text-[#424245]">Click second point to measure</p>
-          )}
-          {measurePoints.length === 2 && (
-            <div className="text-center">
-              <div className="flex items-center gap-4 text-[14px] font-semibold">
-                <span className="text-[#ff3b30]">X: {Math.round(Math.abs(measurePoints[1].x - measurePoints[0].x))}mm</span>
-                <span className="text-[#34c759]">Y: {Math.round(Math.abs(measurePoints[1].y - measurePoints[0].y))}mm</span>
-                <span className="text-[#0071e3]">Z: {Math.round(Math.abs(measurePoints[1].z - measurePoints[0].z))}mm</span>
-              </div>
-              <button
-                onClick={clearMeasure}
-                className="mt-1.5 text-[12px] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
-              >
-                Click to measure again
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -904,7 +778,7 @@ function HelpIcon() {
   );
 }
 
-function MeasureIcon() {
+function MoonIcon() {
   return (
     <svg
       className="w-4 h-4"
@@ -916,13 +790,13 @@ function MeasureIcon() {
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M3 21h18M3 21V3m0 18l4-4m-4-3l4-4m-4-3l4-4M7 21h3m3 0h3m3 0l-4-4"
+        d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
       />
     </svg>
   );
 }
 
-function CameraViewIcon() {
+function SunIcon() {
   return (
     <svg
       className="w-4 h-4"
@@ -934,7 +808,7 @@ function CameraViewIcon() {
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
+        d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
       />
     </svg>
   );
