@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
 /** Regex to detect "door" parts — extend this pattern as needed */
-const DOOR_PATTERN = /door/i;
+const DOOR_PATTERN = /\bdoor\b/i;
+
+/** Default edge colour (dark grey — visible on white cabinets) */
+const DEFAULT_EDGE_COLOR = "#444444";
+const EDGE_THRESHOLD = 1; // degrees
 
 interface PartInfo {
   name: string;
@@ -15,6 +19,16 @@ interface PartInfo {
 interface Props {
   modelUrls: string[];
   jobNumber: string;
+}
+
+/** Convert hex like "#ff00aa" to {r,g,b} 0-255 */
+function hexToRgb(hex: string) {
+  const h = hex.replace("#", "");
+  return {
+    r: parseInt(h.substring(0, 2), 16),
+    g: parseInt(h.substring(2, 4), 16),
+    b: parseInt(h.substring(4, 6), 16),
+  };
 }
 
 export default function ViewerClient({ modelUrls, jobNumber }: Props) {
@@ -29,10 +43,28 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   const [loadError, setLoadError] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showEdges, setShowEdges] = useState(false);
+  const [edgeColor, setEdgeColor] = useState(DEFAULT_EDGE_COLOR);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Track hidden mesh instance IDs (using the o3dv internal mesh instance references)
   const hiddenMeshInstances = useRef<Set<any>>(new Set());
   const selectedUserData = useRef<any>(null);
+
+  // --- Highlight helper ---
+  function applyHighlight(userData: any | null) {
+    const OV = ovRef.current;
+    const viewer = viewerRef.current?.GetViewer();
+    if (!viewer || !OV) return;
+
+    const highlightColor = new OV.RGBColor(0, 113, 227); // Apple blue
+    viewer.SetMeshesHighlight(highlightColor, (ud: any) => {
+      if (!ud?.originalMeshInstance || !userData?.originalMeshInstance)
+        return false;
+      return ud.originalMeshInstance === userData.originalMeshInstance;
+    });
+    viewer.Render();
+  }
 
   const initViewer = useCallback(async () => {
     if (!containerRef.current) return;
@@ -44,7 +76,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     const embeddedViewer = new OV.EmbeddedViewer(containerRef.current, {
       backgroundColor: new OV.RGBAColor(250, 250, 250, 255),
       defaultColor: new OV.RGBColor(200, 200, 200),
-      edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), 1),
+      edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), EDGE_THRESHOLD),
       onModelLoaded: () => {
         setLoading(false);
       },
@@ -73,15 +105,19 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
           setSelectedPart(null);
           setHasSelection(false);
           selectedUserData.current = null;
+          applyHighlight(null);
           return;
         }
 
         selectedUserData.current = userData;
         setHasSelection(true);
+        applyHighlight(userData);
 
         const meshInstance = userData.originalMeshInstance;
         const nodeName =
-          meshInstance.node?.GetName?.() || meshInstance.GetMesh?.()?.GetName?.() || "Unknown Part";
+          meshInstance.node?.GetName?.() ||
+          meshInstance.GetMesh?.()?.GetName?.() ||
+          "Unknown Part";
 
         // Compute bounding box via the exported GetBoundingBox utility
         let width = 0,
@@ -138,10 +174,21 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
     viewer.SetMeshesVisibility((userData: any) => {
       if (!userData?.originalMeshInstance) return true;
-      return !hiddenMeshInstances.current.has(
-        userData.originalMeshInstance
-      );
+      return !hiddenMeshInstances.current.has(userData.originalMeshInstance);
     });
+    viewer.Render();
+  }
+
+  // --- Edge helpers ---
+  function applyEdgeSettings(show: boolean, color: string) {
+    const OV = ovRef.current;
+    const viewer = viewerRef.current?.GetViewer();
+    if (!viewer || !OV) return;
+
+    const rgb = hexToRgb(color);
+    viewer.SetEdgeSettings(
+      new OV.EdgeSettings(show, new OV.RGBColor(rgb.r, rgb.g, rgb.b), EDGE_THRESHOLD)
+    );
     viewer.Render();
   }
 
@@ -154,7 +201,8 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     const newVisible = !doorsVisible;
     setDoorsVisible(newVisible);
 
-    // Walk the node tree to find door nodes
+    // Collect door nodes first, then enumerate mesh instances once
+    const doorNodes = new Set<any>();
     const rootNode = model.GetRootNode();
     const nodeStack: any[] = [rootNode];
 
@@ -163,22 +211,18 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       const name = node.GetName() || "";
 
       if (DOOR_PATTERN.test(name)) {
-        // Enumerate mesh instances belonging to this node
-        const meshIndices = node.GetMeshIndices();
-        for (let i = 0; i < meshIndices.length; i++) {
-          const meshIdx = node.GetMeshIndex(i);
-          const mesh = model.GetMesh(meshIdx);
-          // We need to find the mesh instances that correspond to this node+mesh
-          // Walk mesh instances to match
-          model.EnumerateMeshInstances((mi: any) => {
-            if (mi.node === node) {
-              if (newVisible) {
-                hiddenMeshInstances.current.delete(mi);
-              } else {
-                hiddenMeshInstances.current.add(mi);
-              }
-            }
-          });
+        doorNodes.add(node);
+        // Also add all descendant nodes of a door node
+        const descStack: any[] = [];
+        for (let c = 0; c < node.ChildNodeCount(); c++) {
+          descStack.push(node.GetChildNode(c));
+        }
+        while (descStack.length > 0) {
+          const desc = descStack.pop();
+          doorNodes.add(desc);
+          for (let c = 0; c < desc.ChildNodeCount(); c++) {
+            descStack.push(desc.GetChildNode(c));
+          }
         }
       }
 
@@ -186,6 +230,17 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
         nodeStack.push(node.GetChildNode(c));
       }
     }
+
+    // Single pass over mesh instances
+    model.EnumerateMeshInstances((mi: any) => {
+      if (doorNodes.has(mi.node)) {
+        if (newVisible) {
+          hiddenMeshInstances.current.delete(mi);
+        } else {
+          hiddenMeshInstances.current.add(mi);
+        }
+      }
+    });
 
     applyVisibility();
   }
@@ -197,6 +252,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       selectedUserData.current.originalMeshInstance
     );
     applyVisibility();
+    applyHighlight(null);
     setSelectedPart(null);
     setHasSelection(false);
     selectedUserData.current = null;
@@ -210,6 +266,10 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
   function resetView() {
     showAll();
+    applyHighlight(null);
+    setSelectedPart(null);
+    setHasSelection(false);
+    selectedUserData.current = null;
     const viewer = viewerRef.current?.GetViewer();
     if (viewer) {
       viewer.FitSphereToWindow(viewer.GetBoundingSphere(false), true);
@@ -225,6 +285,93 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       document.exitFullscreen();
     }
   }
+
+  function handleToggleEdges() {
+    const next = !showEdges;
+    setShowEdges(next);
+    applyEdgeSettings(next, edgeColor);
+  }
+
+  function handleEdgeColorChange(color: string) {
+    setEdgeColor(color);
+    if (showEdges) {
+      applyEdgeSettings(true, color);
+    }
+  }
+
+  // --- Render helpers ---
+  const controlButtons = (
+    <>
+      <ControlButton
+        onClick={toggleDoors}
+        active={!doorsVisible}
+        title={doorsVisible ? "Hide Doors" : "Show Doors"}
+        label="Doors"
+      >
+        <DoorIcon />
+      </ControlButton>
+      <ControlButton
+        onClick={hideSelected}
+        disabled={!hasSelection}
+        title="Hide Selected"
+        label="Hide"
+      >
+        <EyeOffIcon />
+      </ControlButton>
+      <ControlButton onClick={showAll} title="Show All" label="Show All">
+        <EyeIcon />
+      </ControlButton>
+      <ControlButton onClick={resetView} title="Reset View" label="Reset">
+        <ResetIcon />
+      </ControlButton>
+
+      {/* Edges toggle + colour */}
+      <div className="flex items-center gap-1">
+        <ControlButton
+          onClick={handleToggleEdges}
+          active={showEdges}
+          title="Show Edges"
+          label="Edges"
+        >
+          <EdgesIcon />
+        </ControlButton>
+        {showEdges && (
+          <label
+            title="Edge colour"
+            className="relative flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-xl bg-white/70 shadow-[0_1px_8px_rgba(0,0,0,0.08)] cursor-pointer overflow-hidden"
+          >
+            <div
+              className="w-4 h-4 rounded-full border border-white/60"
+              style={{ backgroundColor: edgeColor }}
+            />
+            <input
+              type="color"
+              value={edgeColor}
+              onChange={(e) => handleEdgeColorChange(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            />
+          </label>
+        )}
+      </div>
+
+      <ControlButton
+        onClick={toggleFullscreen}
+        active={isFullscreen}
+        title="Fullscreen"
+        label="Full"
+      >
+        <FullscreenIcon />
+      </ControlButton>
+      <ControlButton
+        onClick={() => setShowHelp(!showHelp)}
+        active={showHelp}
+        title="Help"
+        label="Help"
+      >
+        <HelpIcon />
+      </ControlButton>
+    </>
+  );
 
   return (
     <div className="relative w-screen h-screen bg-[#fafafa] overflow-hidden">
@@ -242,44 +389,35 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
           </div>
         </div>
 
-        {/* Right: controls */}
-        <div className="pointer-events-auto flex items-center gap-1.5">
-          <ControlButton
-            onClick={toggleDoors}
-            active={!doorsVisible}
-            title={doorsVisible ? "Hide Doors" : "Show Doors"}
+        {/* Desktop controls (hidden on mobile) */}
+        <div className="pointer-events-auto hidden sm:flex items-center gap-1.5">
+          {controlButtons}
+        </div>
+
+        {/* Mobile hamburger (visible on mobile only) */}
+        <div className="pointer-events-auto sm:hidden">
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className={`
+              flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-xl transition-all
+              ${
+                menuOpen
+                  ? "bg-[#0071e3] text-white shadow-[0_2px_8px_rgba(0,113,227,0.3)]"
+                  : "bg-white/70 text-[#1d1d1f] shadow-[0_1px_8px_rgba(0,0,0,0.08)]"
+              }
+            `}
           >
-            <DoorIcon />
-          </ControlButton>
-          <ControlButton
-            onClick={hideSelected}
-            disabled={!hasSelection}
-            title="Hide Selected"
-          >
-            <EyeOffIcon />
-          </ControlButton>
-          <ControlButton onClick={showAll} title="Show All">
-            <EyeIcon />
-          </ControlButton>
-          <ControlButton onClick={resetView} title="Reset View">
-            <ResetIcon />
-          </ControlButton>
-          <ControlButton
-            onClick={toggleFullscreen}
-            active={isFullscreen}
-            title="Fullscreen"
-          >
-            <FullscreenIcon />
-          </ControlButton>
-          <ControlButton
-            onClick={() => setShowHelp(!showHelp)}
-            active={showHelp}
-            title="Help"
-          >
-            <HelpIcon />
-          </ControlButton>
+            {menuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile menu panel */}
+      {menuOpen && (
+        <div className="absolute top-16 right-4 z-30 sm:hidden backdrop-blur-xl bg-white/90 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] p-3">
+          <div className="flex flex-col gap-1.5">{controlButtons}</div>
+        </div>
+      )}
 
       {/* Help overlay */}
       {showHelp && (
@@ -295,7 +433,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
               <b>Pan:</b> Right-click + drag
             </p>
             <p>
-              <b>Zoom:</b> Scroll wheel
+              <b>Zoom:</b> Scroll wheel / pinch
             </p>
             <p>
               <b>Select:</b> Click on a part
@@ -369,12 +507,14 @@ function ControlButton({
   active,
   disabled,
   title,
+  label,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   active?: boolean;
   disabled?: boolean;
   title?: string;
+  label?: string;
 }) {
   return (
     <button
@@ -382,7 +522,7 @@ function ControlButton({
       disabled={disabled}
       title={title}
       className={`
-        flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-xl transition-all
+        flex items-center justify-center gap-1.5 sm:w-9 h-9 rounded-xl backdrop-blur-xl transition-all px-3 sm:px-0
         ${
           active
             ? "bg-[#0071e3] text-white shadow-[0_2px_8px_rgba(0,113,227,0.3)]"
@@ -392,11 +532,50 @@ function ControlButton({
       `}
     >
       {children}
+      {label && (
+        <span className="sm:hidden text-[12px] font-medium">{label}</span>
+      )}
     </button>
   );
 }
 
 /* ─── Icons (minimal inline SVGs) ─── */
+
+function MenuIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6 18L18 6M6 6l12 12"
+      />
+    </svg>
+  );
+}
 
 function DoorIcon() {
   return (
@@ -471,6 +650,24 @@ function ResetIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+      />
+    </svg>
+  );
+}
+
+function EdgesIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
       />
     </svg>
   );
