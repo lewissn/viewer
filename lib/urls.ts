@@ -38,7 +38,11 @@ export function validateUrls(urls: string[]): { valid: boolean; error?: string }
     return { valid: false, error: "At least one URL is required." };
   }
 
-  const hasModel = urls.some((u) => MODEL_EXTENSIONS.test(u));
+  const hasModel = urls.some((u) => {
+    // Strip query string and fragment before checking extension
+    const path = u.split("?")[0].split("#")[0];
+    return MODEL_EXTENSIONS.test(path);
+  });
   if (!hasModel) {
     return {
       valid: false,
