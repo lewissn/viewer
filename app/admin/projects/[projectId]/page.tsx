@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { CabinetInstance } from "@/lib/projects";
+import { makeCabinetId } from "@/lib/projects";
 import { classifyPart } from "@/lib/classifyPart";
+import { parsePartsList } from "@/lib/parseErp";
 
 interface ProjectData {
   id: string;
@@ -22,9 +24,12 @@ export default function ProjectEditorPage() {
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-  const [csvText, setCsvText] = useState("");
-  const [parsing, setParsing] = useState(false);
-  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+
+  // Per-cabinet ERP text state (keyed by cabinetId)
+  const [cabinetCsvMap, setCabinetCsvMap] = useState<Record<string, string>>({});
+
+  // Add cabinet form
+  const [newCabinetName, setNewCabinetName] = useState("");
 
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ||
@@ -44,49 +49,50 @@ export default function ProjectEditorPage() {
     load();
   }, [projectId]);
 
-  // Parse ERP CSV
-  async function handleParseErp() {
-    if (!csvText.trim() || !project) return;
-    setParsing(true);
-    setParseWarnings([]);
+  // Parse ERP for a specific cabinet
+  function handleParseCabinetErp(cabinetId: string) {
+    if (!project) return;
+    const csvText = cabinetCsvMap[cabinetId] ?? "";
+    if (!csvText.trim()) return;
 
-    try {
-      const res = await fetch("/api/projects/parse-erp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csvText }),
-      });
+    const { parts, warnings } = parsePartsList(csvText);
 
-      const data = await res.json();
-      if (!res.ok) {
-        setParseWarnings([data.error]);
-        return;
-      }
-
-      setParseWarnings(data.warnings || []);
-
-      // Merge parsed cabinets with existing ones (preserve model URLs)
-      const existing = new Map(
-        project.cabinets.map((c) => [c.cabinetId, c])
-      );
-
-      const merged: CabinetInstance[] = data.cabinets.map(
-        (parsed: CabinetInstance) => {
-          const ex = existing.get(parsed.cabinetId);
-          return {
-            ...parsed,
-            modelFileUrl: ex?.modelFileUrl ?? parsed.modelFileUrl,
-            guideOverrides: ex?.guideOverrides ?? parsed.guideOverrides,
-          };
-        }
-      );
-
-      setProject({ ...project, cabinets: merged });
-    } catch {
-      setParseWarnings(["Network error parsing CSV."]);
-    } finally {
-      setParsing(false);
+    if (warnings.length > 0) {
+      // Show warnings briefly via save message
+      setSaveMsg(`Parse warnings: ${warnings.join("; ")}`);
+      setTimeout(() => setSaveMsg(""), 5000);
     }
+
+    // Update the cabinet's erpParts
+    setProject({
+      ...project,
+      cabinets: project.cabinets.map((c) =>
+        c.cabinetId === cabinetId ? { ...c, erpParts: parts } : c
+      ),
+    });
+
+    // Clear the textarea after parsing
+    setCabinetCsvMap((prev) => ({ ...prev, [cabinetId]: "" }));
+  }
+
+  // Add a new cabinet
+  function handleAddCabinet() {
+    if (!project || !newCabinetName.trim()) return;
+
+    // Count existing cabinets with same name for index
+    const existingCount = project.cabinets.filter(
+      (c) => c.cabinetName === newCabinetName.trim()
+    ).length;
+
+    const cab: CabinetInstance = {
+      cabinetId: makeCabinetId(newCabinetName.trim(), existingCount),
+      cabinetName: newCabinetName.trim(),
+      cabinetIndex: existingCount,
+      erpParts: [],
+    };
+
+    setProject({ ...project, cabinets: [...project.cabinets, cab] });
+    setNewCabinetName("");
   }
 
   // Save project
@@ -139,6 +145,12 @@ export default function ProjectEditorPage() {
     setProject({
       ...project,
       cabinets: project.cabinets.filter((c) => c.cabinetId !== cabinetId),
+    });
+    // Clean up csv state
+    setCabinetCsvMap((prev) => {
+      const next = { ...prev };
+      delete next[cabinetId];
+      return next;
     });
   }
 
@@ -210,8 +222,8 @@ export default function ProjectEditorPage() {
         {saveMsg && (
           <div
             className={`mb-6 rounded-xl px-4 py-3 text-[14px] ${
-              saveMsg.startsWith("Error")
-                ? "bg-[#fff5f5] border border-[#fecaca] text-[#dc2626]"
+              saveMsg.startsWith("Error") || saveMsg.startsWith("Parse warnings")
+                ? "bg-[#fffbeb] border border-[#fde68a] text-[#92400e]"
                 : "bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534]"
             }`}
           >
@@ -237,47 +249,39 @@ export default function ProjectEditorPage() {
           </div>
         </div>
 
-        {/* ERP Upload */}
+        {/* Add Cabinet */}
         <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-6 mb-6">
           <h2 className="text-[13px] font-semibold text-[#86868b] uppercase tracking-wider mb-3">
-            ERP Data
+            Add Cabinet
           </h2>
-          <textarea
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-            placeholder={
-              "Paste CSV data here (projectName, cabinetName, partName)\n\nSmith Kitchen,Low Double Cupboard,Bottom\nSmith Kitchen,Low Double Cupboard,Plinth\n..."
-            }
-            rows={8}
-            className="w-full rounded-xl border border-[#d2d2d7] bg-white px-4 py-3 text-[13px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 resize-none font-mono mb-3"
-          />
-          <button
-            onClick={handleParseErp}
-            disabled={parsing || !csvText.trim()}
-            className="rounded-xl bg-[#1d1d1f] px-5 py-2.5 text-[14px] font-medium text-white hover:bg-[#333] transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            {parsing ? "Parsing..." : "Parse ERP CSV"}
-          </button>
-          {parseWarnings.length > 0 && (
-            <div className="mt-3 rounded-xl bg-[#fffbeb] border border-[#fde68a] px-4 py-3">
-              {parseWarnings.map((w, i) => (
-                <p key={i} className="text-[13px] text-[#92400e]">
-                  {w}
-                </p>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={newCabinetName}
+              onChange={(e) => setNewCabinetName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddCabinet()}
+              placeholder="Cabinet name (e.g. Low Double Cupboard)"
+              className="flex-1 rounded-xl border border-[#d2d2d7] bg-white px-4 py-2.5 text-[14px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10"
+            />
+            <button
+              onClick={handleAddCabinet}
+              disabled={!newCabinetName.trim()}
+              className="rounded-xl bg-[#1d1d1f] px-5 py-2.5 text-[14px] font-medium text-white hover:bg-[#333] transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
         </div>
 
         {/* Cabinet Instances */}
         <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-6">
           <h2 className="text-[13px] font-semibold text-[#86868b] uppercase tracking-wider mb-4">
-            Cabinet Instances ({project.cabinets.length})
+            Cabinets ({project.cabinets.length})
           </h2>
 
           {project.cabinets.length === 0 && (
             <p className="text-[14px] text-[#86868b] py-4">
-              No cabinets yet. Upload an ERP CSV to populate.
+              No cabinets yet. Add one above to get started.
             </p>
           )}
 
@@ -287,6 +291,7 @@ export default function ProjectEditorPage() {
               const nameCount = project.cabinets.filter(
                 (c) => c.cabinetName === cab.cabinetName
               ).length;
+              const csvText = cabinetCsvMap[cab.cabinetId] ?? "";
 
               return (
                 <div
@@ -332,9 +337,37 @@ export default function ProjectEditorPage() {
                     />
                   </div>
 
+                  {/* Per-cabinet ERP upload */}
+                  <div className="mb-3">
+                    <label className="block text-[12px] font-medium text-[#86868b] mb-1">
+                      ERP Parts (one per line)
+                    </label>
+                    <textarea
+                      value={csvText}
+                      onChange={(e) =>
+                        setCabinetCsvMap((prev) => ({
+                          ...prev,
+                          [cab.cabinetId]: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        "Paste part names here, one per line:\n\nBottom\nPlinth\nLeft Side\nRight Side\nTop\n..."
+                      }
+                      rows={5}
+                      className="w-full rounded-lg border border-[#d2d2d7] bg-white px-3 py-2 text-[12px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 resize-none font-mono mb-2"
+                    />
+                    <button
+                      onClick={() => handleParseCabinetErp(cab.cabinetId)}
+                      disabled={!csvText.trim()}
+                      className="rounded-lg bg-[#1d1d1f] px-4 py-1.5 text-[12px] font-medium text-white hover:bg-[#333] transition-all active:scale-[0.98] disabled:opacity-50"
+                    >
+                      Import Parts
+                    </button>
+                  </div>
+
                   {/* Detected groups */}
                   {groups.length > 0 && (
-                    <div>
+                    <div className="mb-3">
                       <p className="text-[12px] font-medium text-[#86868b] mb-1.5">
                         Detected Groups
                       </p>
