@@ -21,9 +21,6 @@ function log(...args: unknown[]) {
   if (DEBUG) console.log("[AssemblyGuide]", ...args);
 }
 
-function warn(...args: unknown[]) {
-  if (DEBUG) console.warn("[AssemblyGuide]", ...args);
-}
 
 // ── Types ──
 
@@ -108,16 +105,25 @@ export class AssemblyGuideController {
     this.viewerEngine = embeddedViewer.GetViewer();
     this.OV = OV;
 
+    // Always log diagnostics during init (helps debug model issues)
+    console.log("[AssemblyGuide] Initialising...");
+    console.log("[AssemblyGuide] viewerEngine:", !!this.viewerEngine);
+    console.log("[AssemblyGuide] viewerEngine.mainModel:", !!this.viewerEngine?.mainModel);
+
     // Enumerate all THREE.Mesh objects via the viewer's mainModel
     this.collectParts();
 
-    if (this.allParts.length === 0) {
-      warn("No mesh parts found in viewer!");
-      return;
+    console.log("[AssemblyGuide] Parts found:", this.allParts.length);
+    if (this.allParts.length > 0) {
+      console.log("[AssemblyGuide] Part names:", this.allParts.map((p) => p.name));
     }
 
-    log("Total mesh parts found:", this.allParts.length);
-    this.allParts.forEach((p) => log("  Part:", p.name));
+    if (this.allParts.length === 0) {
+      console.warn("[AssemblyGuide] No mesh parts found! Steps will be empty.");
+      // Still notify so the UI can show the intro
+      this.notifyListeners();
+      return;
+    }
 
     // Group by prefix
     this.groupPartsByPrefix();
@@ -131,14 +137,14 @@ export class AssemblyGuideController {
         return sum + (this.partGroups.get(normalizePartName(p))?.length || 0);
       }, 0);
       if (count === 0) {
-        warn(
-          `Step skipped (no parts): prefixes=${step.prefixes.join(", ")}`
+        console.warn(
+          `[AssemblyGuide] Step skipped (no parts): prefixes=${step.prefixes.join(", ")}`
         );
       }
       return count > 0;
     });
 
-    log("Active steps:", this._activeSteps.length);
+    console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
 
     // Apply exploded positions immediately
     this.applyExplodedToAll();
@@ -153,17 +159,42 @@ export class AssemblyGuideController {
   private collectParts() {
     this.allParts = [];
 
+    // Try the viewer's EnumerateMeshesAndLines method
     try {
-      this.viewerEngine.mainModel.EnumerateMeshesAndLines((obj: any) => {
-        // Only process actual meshes, not line segments
+      const mainModel = this.viewerEngine?.mainModel;
+      if (!mainModel) {
+        console.error("[AssemblyGuide] viewerEngine.mainModel is null/undefined");
+        return;
+      }
+
+      if (typeof mainModel.EnumerateMeshesAndLines !== "function") {
+        console.error("[AssemblyGuide] EnumerateMeshesAndLines is not a function. mainModel keys:", Object.keys(mainModel));
+        return;
+      }
+
+      let totalVisited = 0;
+      let meshCount = 0;
+      let noUserData = 0;
+      let noName = 0;
+
+      mainModel.EnumerateMeshesAndLines((obj: any) => {
+        totalVisited++;
+
         if (!obj.isMesh) return;
+        meshCount++;
 
         const mi = obj.userData?.originalMeshInstance;
-        if (!mi) return;
+        if (!mi) {
+          noUserData++;
+          return;
+        }
 
         const name =
           mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-        if (!name) return;
+        if (!name) {
+          noName++;
+          return;
+        }
 
         this.allParts.push({
           threeMesh: obj,
@@ -176,8 +207,10 @@ export class AssemblyGuideController {
           explodedPos: { x: 0, y: 0, z: 0 }, // computed below
         });
       });
+
+      console.log(`[AssemblyGuide] Enumeration: ${totalVisited} objects visited, ${meshCount} meshes, ${noUserData} without userData, ${noName} without name, ${this.allParts.length} usable parts`);
     } catch (e) {
-      warn("Failed to enumerate meshes:", e);
+      console.error("[AssemblyGuide] Failed to enumerate meshes:", e);
     }
   }
 
@@ -196,7 +229,10 @@ export class AssemblyGuideController {
         matchesPrefix(part.name, prefix)
       );
       this.partGroups.set(normalizedPrefix, matched);
-      log(`Prefix "${prefix}": ${matched.length} parts matched`);
+      console.log(
+        `[AssemblyGuide] Prefix "${prefix}": ${matched.length} parts matched`,
+        matched.map((p) => p.name)
+      );
     }
   }
 
