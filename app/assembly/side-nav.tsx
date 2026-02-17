@@ -8,19 +8,24 @@ import {
   type NavSection,
 } from "@/lib/navigation";
 
+interface SideNavProps {
+  /** Override default navigation sections (e.g. for project context) */
+  sections?: NavSection[];
+}
+
 // ── Desktop sidebar (rendered in the flex root) ──
 
-export function DesktopSidebar() {
+export function DesktopSidebar({ sections }: SideNavProps = {}) {
   return (
     <aside className="hidden lg:flex flex-col w-[280px] h-screen flex-shrink-0 bg-white/80 backdrop-blur-xl border-r border-[#e5e5ea] overflow-y-auto">
-      <NavContent />
+      <NavContent sections={sections} />
     </aside>
   );
 }
 
 // ── Mobile hamburger + drawer (rendered in the top bar) ──
 
-export function MobileNav() {
+export function MobileNav({ sections }: SideNavProps = {}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -74,7 +79,7 @@ export function MobileNav() {
                 <CloseIcon />
               </button>
             </div>
-            <NavContent onNavigate={close} />
+            <NavContent sections={sections} onNavigate={close} />
           </div>
         </div>
       )}
@@ -84,10 +89,17 @@ export function MobileNav() {
 
 // ── Shared nav content ──
 
-function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+function NavContent({
+  sections,
+  onNavigate,
+}: {
+  sections?: NavSection[];
+  onNavigate?: () => void;
+}) {
+  const navSections = sections ?? NAVIGATION;
   return (
     <nav className="flex flex-col gap-1 px-3 py-4">
-      {NAVIGATION.map((section) => (
+      {navSections.map((section) => (
         <SectionBlock
           key={section.title}
           section={section}

@@ -1,3 +1,5 @@
+import { type CabinetInstance, cabinetDisplayName } from "./projects";
+
 /**
  * Navigation menu structure for the assembly guides section.
  *
@@ -143,3 +145,39 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
 ];
+
+/**
+ * Build navigation sections for a project context.
+ * Replaces "Cabinet Tutorials" with "This Project" showing cabinet instances.
+ * Keeps Fittings Guide and Need Help unchanged.
+ */
+export function buildProjectNavigation(
+  projectId: string,
+  cabinets: CabinetInstance[]
+): NavSection[] {
+  // Count occurrences of each cabinet name for display
+  const nameCounts = new Map<string, number>();
+  for (const cab of cabinets) {
+    nameCounts.set(cab.cabinetName, (nameCounts.get(cab.cabinetName) ?? 0) + 1);
+  }
+
+  const cabinetItems: NavItem[] = cabinets
+    .filter((cab) => cab.modelFileUrl)
+    .map((cab) => ({
+      type: "link" as const,
+      label: cabinetDisplayName(cab, nameCounts.get(cab.cabinetName) ?? 1),
+      href: `/project/${projectId}?cabinet=${cab.cabinetId}`,
+    }));
+
+  return [
+    NAVIGATION[0], // Fittings Guide
+    {
+      title: "This Project",
+      items:
+        cabinetItems.length > 0
+          ? cabinetItems
+          : [{ type: "link" as const, label: "No cabinets configured", href: "#" }],
+    },
+    NAVIGATION[2], // Need Help
+  ];
+}
