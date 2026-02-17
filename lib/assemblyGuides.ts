@@ -27,10 +27,10 @@ export interface AssemblyGuide {
 }
 
 export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
-  "low-double-cupboard": {
-    title: "Low Double Cupboard",
+  "low-quad-cupboard": {
+    title: "Low Quad Cupboard",
     modelUrl:
-      "https://www.dropbox.com/scl/fi/6tr564o5gpg8tlknjxfi4/LDC.3ds?rlkey=rbf45xegiuhf9aouvshvegza6&dl=0",
+      "https://www.dropbox.com/scl/fi/xh3tew89dhw86a635553h/LQC.3ds?rlkey=pob20puq4enw00dzeuttw8lpx&dl=0",
     explode: {
       distance: 4.8,
       offsets: {
