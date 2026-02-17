@@ -6,7 +6,6 @@ import Link from "next/link";
 import type { CabinetInstance } from "@/lib/projects";
 import { makeCabinetId } from "@/lib/projects";
 import { classifyPart } from "@/lib/classifyPart";
-import { parsePartsList } from "@/lib/parseErp";
 
 interface ProjectData {
   id: string;
@@ -25,8 +24,8 @@ export default function ProjectEditorPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
-  // Per-cabinet ERP text state (keyed by cabinetId)
-  const [cabinetCsvMap, setCabinetCsvMap] = useState<Record<string, string>>({});
+  // Per-cabinet fetching state (keyed by cabinetId)
+  const [fetchingMap, setFetchingMap] = useState<Record<string, boolean>>({});
 
   // Add cabinet form
   const [newCabinetName, setNewCabinetName] = useState("");
@@ -49,37 +48,52 @@ export default function ProjectEditorPage() {
     load();
   }, [projectId]);
 
-  // Parse ERP for a specific cabinet
-  function handleParseCabinetErp(cabinetId: string) {
+  // Fetch ERP CSV from URL for a specific cabinet
+  async function handleFetchErp(cabinetId: string) {
     if (!project) return;
-    const csvText = cabinetCsvMap[cabinetId] ?? "";
-    if (!csvText.trim()) return;
+    const cab = project.cabinets.find((c) => c.cabinetId === cabinetId);
+    if (!cab?.erpCsvUrl?.trim()) return;
 
-    const { parts, warnings } = parsePartsList(csvText);
+    setFetchingMap((prev) => ({ ...prev, [cabinetId]: true }));
+    setSaveMsg("");
 
-    if (warnings.length > 0) {
-      // Show warnings briefly via save message
-      setSaveMsg(`Parse warnings: ${warnings.join("; ")}`);
-      setTimeout(() => setSaveMsg(""), 5000);
+    try {
+      const res = await fetch("/api/projects/fetch-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: cab.erpCsvUrl, column: 4 }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSaveMsg(`Error fetching CSV: ${data.error}`);
+        return;
+      }
+
+      if (data.warnings?.length > 0) {
+        setSaveMsg(`Warnings: ${data.warnings.join("; ")}`);
+        setTimeout(() => setSaveMsg(""), 5000);
+      }
+
+      // Update the cabinet's erpParts
+      setProject({
+        ...project,
+        cabinets: project.cabinets.map((c) =>
+          c.cabinetId === cabinetId ? { ...c, erpParts: data.parts } : c
+        ),
+      });
+    } catch {
+      setSaveMsg("Network error fetching CSV.");
+    } finally {
+      setFetchingMap((prev) => ({ ...prev, [cabinetId]: false }));
     }
-
-    // Update the cabinet's erpParts
-    setProject({
-      ...project,
-      cabinets: project.cabinets.map((c) =>
-        c.cabinetId === cabinetId ? { ...c, erpParts: parts } : c
-      ),
-    });
-
-    // Clear the textarea after parsing
-    setCabinetCsvMap((prev) => ({ ...prev, [cabinetId]: "" }));
   }
 
   // Add a new cabinet
   function handleAddCabinet() {
     if (!project || !newCabinetName.trim()) return;
 
-    // Count existing cabinets with same name for index
     const existingCount = project.cabinets.filter(
       (c) => c.cabinetName === newCabinetName.trim()
     ).length;
@@ -128,13 +142,13 @@ export default function ProjectEditorPage() {
     }
   }
 
-  // Update a cabinet's model URL
-  function updateCabinetModelUrl(cabinetId: string, url: string) {
+  // Update a cabinet field
+  function updateCabinet(cabinetId: string, updates: Partial<CabinetInstance>) {
     if (!project) return;
     setProject({
       ...project,
       cabinets: project.cabinets.map((c) =>
-        c.cabinetId === cabinetId ? { ...c, modelFileUrl: url } : c
+        c.cabinetId === cabinetId ? { ...c, ...updates } : c
       ),
     });
   }
@@ -145,12 +159,6 @@ export default function ProjectEditorPage() {
     setProject({
       ...project,
       cabinets: project.cabinets.filter((c) => c.cabinetId !== cabinetId),
-    });
-    // Clean up csv state
-    setCabinetCsvMap((prev) => {
-      const next = { ...prev };
-      delete next[cabinetId];
-      return next;
     });
   }
 
@@ -178,7 +186,6 @@ export default function ProjectEditorPage() {
     );
   }
 
-  // Detect groups from ERP parts for each cabinet
   function getDetectedGroups(parts: string[]): string[] {
     const groups = new Set<string>();
     for (const name of parts) {
@@ -222,7 +229,7 @@ export default function ProjectEditorPage() {
         {saveMsg && (
           <div
             className={`mb-6 rounded-xl px-4 py-3 text-[14px] ${
-              saveMsg.startsWith("Error") || saveMsg.startsWith("Parse warnings")
+              saveMsg.startsWith("Error") || saveMsg.startsWith("Warnings")
                 ? "bg-[#fffbeb] border border-[#fde68a] text-[#92400e]"
                 : "bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534]"
             }`}
@@ -291,7 +298,7 @@ export default function ProjectEditorPage() {
               const nameCount = project.cabinets.filter(
                 (c) => c.cabinetName === cab.cabinetName
               ).length;
-              const csvText = cabinetCsvMap[cab.cabinetId] ?? "";
+              const isFetching = fetchingMap[cab.cabinetId] ?? false;
 
               return (
                 <div
@@ -330,39 +337,36 @@ export default function ProjectEditorPage() {
                       type="text"
                       value={cab.modelFileUrl ?? ""}
                       onChange={(e) =>
-                        updateCabinetModelUrl(cab.cabinetId, e.target.value)
+                        updateCabinet(cab.cabinetId, { modelFileUrl: e.target.value })
                       }
                       placeholder="https://example.com/model.glb"
                       className="w-full rounded-lg border border-[#d2d2d7] bg-white px-3 py-2 text-[13px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 font-mono"
                     />
                   </div>
 
-                  {/* Per-cabinet ERP upload */}
+                  {/* ERP CSV URL */}
                   <div className="mb-3">
                     <label className="block text-[12px] font-medium text-[#86868b] mb-1">
-                      ERP Parts (one per line)
+                      ERP CSV URL (part names read from column 4)
                     </label>
-                    <textarea
-                      value={csvText}
-                      onChange={(e) =>
-                        setCabinetCsvMap((prev) => ({
-                          ...prev,
-                          [cab.cabinetId]: e.target.value,
-                        }))
-                      }
-                      placeholder={
-                        "Paste part names here, one per line:\n\nBottom\nPlinth\nLeft Side\nRight Side\nTop\n..."
-                      }
-                      rows={5}
-                      className="w-full rounded-lg border border-[#d2d2d7] bg-white px-3 py-2 text-[12px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 resize-none font-mono mb-2"
-                    />
-                    <button
-                      onClick={() => handleParseCabinetErp(cab.cabinetId)}
-                      disabled={!csvText.trim()}
-                      className="rounded-lg bg-[#1d1d1f] px-4 py-1.5 text-[12px] font-medium text-white hover:bg-[#333] transition-all active:scale-[0.98] disabled:opacity-50"
-                    >
-                      Import Parts
-                    </button>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={cab.erpCsvUrl ?? ""}
+                        onChange={(e) =>
+                          updateCabinet(cab.cabinetId, { erpCsvUrl: e.target.value })
+                        }
+                        placeholder="https://example.com/parts.csv"
+                        className="flex-1 rounded-lg border border-[#d2d2d7] bg-white px-3 py-2 text-[13px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 font-mono"
+                      />
+                      <button
+                        onClick={() => handleFetchErp(cab.cabinetId)}
+                        disabled={!cab.erpCsvUrl?.trim() || isFetching}
+                        className="shrink-0 rounded-lg bg-[#1d1d1f] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#333] transition-all active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {isFetching ? "Fetching..." : "Fetch Parts"}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Detected groups */}
