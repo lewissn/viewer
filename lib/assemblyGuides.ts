@@ -32,7 +32,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
     modelUrl:
       "https://viewer.thecabinetshop.co.uk/assets/assembly-guides/low-double-cupboard/v1/model.glb",
     explode: {
-      distance: 1.2,
+      distance: 2.4,
       offsets: {
         Bottom: [0, -1, 0],
         Plinth: [0, -1.4, 0.3],
