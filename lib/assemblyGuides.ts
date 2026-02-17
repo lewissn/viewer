@@ -32,7 +32,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
     modelUrl:
       "https://www.dropbox.com/scl/fi/6tr564o5gpg8tlknjxfi4/LDC.3ds?rlkey=rbf45xegiuhf9aouvshvegza6&dl=0",
     explode: {
-      distance: 1.2,
+      distance: 2.4,
       offsets: {
         Bottom: [0, -1, 0],
         Plinth: [0, -1.4, 0.3],

@@ -342,6 +342,60 @@ export class AssemblyGuideController {
     }
   }
 
+  // ── Transparency ──
+
+  /** Set opacity on a part's material (THREE.js) */
+  private setPartOpacity(part: PartMesh, opacity: number) {
+    const mat = part.threeMesh.material;
+    if (!mat) return;
+    const materials = Array.isArray(mat) ? mat : [mat];
+    for (const m of materials) {
+      m.transparent = opacity < 1;
+      m.opacity = opacity;
+      m.needsUpdate = true;
+    }
+  }
+
+  /** Apply transparency: inactive parts (not assembled, not current step) are dimmed */
+  private applyTransparency(currentPrefixes: string[]) {
+    const currentSet = new Set(currentPrefixes.map(normalizePartName));
+
+    for (const part of this.allParts) {
+      const norm = normalizePartName(part.name);
+
+      // Check if this part belongs to an already-assembled step
+      let isAssembled = false;
+      for (const prefix of this._assembledPrefixes) {
+        if (norm.startsWith(prefix)) {
+          isAssembled = true;
+          break;
+        }
+      }
+
+      // Check if this part belongs to the current step
+      let isCurrent = false;
+      for (const prefix of currentSet) {
+        if (norm.startsWith(prefix)) {
+          isCurrent = true;
+          break;
+        }
+      }
+
+      if (isAssembled || isCurrent) {
+        this.setPartOpacity(part, 1.0);
+      } else {
+        this.setPartOpacity(part, 0.2);
+      }
+    }
+  }
+
+  /** Reset all parts to fully opaque */
+  private clearTransparency() {
+    for (const part of this.allParts) {
+      this.setPartOpacity(part, 1.0);
+    }
+  }
+
   // ── Animation ──
 
   private animate(
@@ -429,6 +483,7 @@ export class AssemblyGuideController {
       // Complete
       this._currentStep = this._activeSteps.length;
       this.clearHighlight();
+      this.clearTransparency();
       this.notifyListeners();
       return;
     }
@@ -438,8 +493,9 @@ export class AssemblyGuideController {
 
     const step = this._activeSteps[nextStep];
 
-    // Highlight focus parts
+    // Highlight focus parts and dim inactive
     this.applyHighlightDim(step.prefixes);
+    this.applyTransparency(step.prefixes);
 
     // Animate these parts from exploded to assembled
     await this.animateAssemble(step.prefixes);
@@ -449,8 +505,9 @@ export class AssemblyGuideController {
       this._assembledPrefixes.add(normalizePartName(p));
     }
 
-    // Clear highlight after animation
+    // Clear highlight after animation, keep transparency for remaining steps
     this.clearHighlight();
+    this.applyTransparency([]);
     this.renderViewer();
   }
 
@@ -463,6 +520,7 @@ export class AssemblyGuideController {
       this._assembledPrefixes.clear();
       this.applyExplodedToAll();
       this.clearHighlight();
+      this.clearTransparency();
       this.notifyListeners();
       return;
     }
@@ -487,6 +545,7 @@ export class AssemblyGuideController {
     }
 
     this._currentStep = targetStep;
+    this.applyTransparency([]);
     this.renderViewer();
     this.notifyListeners();
   }
@@ -498,6 +557,7 @@ export class AssemblyGuideController {
     this._assembledPrefixes.clear();
     this.applyExplodedToAll();
     this.clearHighlight();
+    this.clearTransparency();
     this.notifyListeners();
   }
 
@@ -514,6 +574,7 @@ export class AssemblyGuideController {
       this.applyAssembledToPart(part);
     }
     this.clearHighlight();
+    this.clearTransparency();
     this.renderViewer();
   }
 
