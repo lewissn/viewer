@@ -1,15 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
+interface ProjectSummary {
+  id: string;
+  project_id: string;
+  project_name: string;
+  customer_name: string | null;
+  cabinets: { cabinetId: string }[];
+  created_at: string;
+  updated_at: string;
+}
+
 export default function AdminProjectsPage() {
+  // Create form
   const [projectId, setProjectId] = useState("");
   const [projectName, setProjectName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<string | null>(null);
+
+  // Project list
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [listLoading, setListLoading] = useState(true);
+
+  const fetchProjects = useCallback(async (q: string) => {
+    setListLoading(true);
+    try {
+      const res = await fetch(
+        `/api/projects/list?q=${encodeURIComponent(q)}&limit=50`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.projects);
+        setTotal(data.total);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchProjects("");
+  }, [fetchProjects]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProjects(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, fetchProjects]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -37,6 +85,8 @@ export default function AdminProjectsPage() {
       }
 
       setCreated(data.project.project_id);
+      // Refresh the list
+      fetchProjects(search);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -44,13 +94,21 @@ export default function AdminProjectsPage() {
     }
   }
 
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
   return (
-    <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4 py-12 sm:px-6">
-      <div className="w-full max-w-xl">
+    <div className="min-h-screen bg-[#fafafa] px-4 py-12 sm:px-6">
+      <div className="w-full max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-[28px] font-semibold tracking-tight text-[#1d1d1f]">
-            Assembly Guide Projects
+            Assembly Guides
           </h1>
           <p className="mt-2 text-[15px] text-[#86868b]">
             Create and manage customer assembly guide projects
@@ -68,7 +126,7 @@ export default function AdminProjectsPage() {
         </div>
 
         {/* Create project card */}
-        <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8">
+        <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8 mb-8">
           <h2 className="text-[17px] font-semibold text-[#1d1d1f] mb-6">
             Create New Project
           </h2>
@@ -156,6 +214,82 @@ export default function AdminProjectsPage() {
                   Open project editor &rarr;
                 </Link>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Existing Projects */}
+        <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[17px] font-semibold text-[#1d1d1f]">
+              Existing Projects
+            </h2>
+            <span className="text-[13px] text-[#86868b]">
+              {total} project{total !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* Search */}
+          <div className="mb-5">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by project ID, name, or customer..."
+              className="w-full rounded-xl border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3 text-[14px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 focus:bg-white"
+            />
+          </div>
+
+          {/* List */}
+          {listLoading && projects.length === 0 ? (
+            <div className="flex justify-center py-8">
+              <div className="w-6 h-6 border-2 border-[#d2d2d7] border-t-[#0071e3] rounded-full animate-spin" />
+            </div>
+          ) : projects.length === 0 ? (
+            <p className="text-[14px] text-[#86868b] text-center py-8">
+              {search
+                ? "No projects match your search."
+                : "No projects yet. Create one above to get started."}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {projects.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/admin/projects/${p.project_id}`}
+                  className="block rounded-xl border border-[#e5e5ea] p-4 transition-all hover:border-[#0071e3]/30 hover:bg-[#f5f5f7]/50 active:scale-[0.995]"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-[15px] font-medium text-[#1d1d1f] truncate">
+                          {p.project_name}
+                        </h3>
+                        <span className="shrink-0 rounded-md bg-[#f5f5f7] px-2 py-0.5 text-[11px] text-[#86868b] font-mono">
+                          {p.project_id}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        {p.customer_name && (
+                          <span className="text-[13px] text-[#86868b]">
+                            {p.customer_name}
+                          </span>
+                        )}
+                        <span className="text-[12px] text-[#86868b]">
+                          {p.cabinets?.length ?? 0} cabinet
+                          {(p.cabinets?.length ?? 0) !== 1 ? "s" : ""}
+                        </span>
+                        <span className="text-[12px] text-[#86868b]">
+                          Updated {formatDate(p.updated_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[16px] text-[#86868b] ml-3">
+                      &rarr;
+                    </span>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </div>
