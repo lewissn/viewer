@@ -36,7 +36,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
       offsets: {
         Bottom: [0, -1, 0],
         Plinth: [0, -1.4, -0.3],
-        Top: [0, 1, 0],
+        Top: [0, 1, 1.0],
         "Vertical Division": [0, 0.3, 0.5],
         "Left Side": [-1, 0, 0],
         "Right Side": [1, 0, 0],
