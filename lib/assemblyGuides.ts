@@ -13,10 +13,10 @@ export interface AssemblyStep {
 }
 
 export interface ExplodeConfig {
-  /** Base distance to push parts outward from center */
+  /** Base distance (multiplied by model radius) to push parts outward */
   distance: number;
-  /** Per-prefix multiplier overrides (default 1.0 for unlisted prefixes) */
-  multipliers?: Record<string, number>;
+  /** Per-prefix explicit offset directions [x, y, z] – each axis is a multiplier of distance */
+  offsets: Record<string, [number, number, number]>;
 }
 
 export interface AssemblyGuide {
@@ -32,11 +32,17 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
     modelUrl:
       "https://viewer.thecabinetshop.co.uk/assets/assembly-guides/low-double-cupboard/v1/model.glb",
     explode: {
-      distance: 1.5,
-      multipliers: {
-        Door: 1.3,
-        Back: 1.1,
-        "Counter Top": 1.2,
+      distance: 1.2,
+      offsets: {
+        Bottom: [0, -1, 0],
+        Plinth: [0, -1.4, 0.3],
+        Top: [0, 1, 0],
+        "Vertical Division": [0, 0.3, 0.5],
+        "Left Side": [-1, 0, 0],
+        "Right Side": [1, 0, 0],
+        Back: [0, 0, -1.2],
+        Door: [0, 0, 1.4],
+        "Counter Top": [0, 1.3, 0.3],
       },
     },
     steps: [

@@ -236,34 +236,9 @@ export class AssemblyGuideController {
     }
   }
 
-  /** Compute exploded positions by pushing parts outward from model center */
+  /** Compute exploded positions using explicit per-prefix offset directions */
   private computeExplodedPositions() {
-    // Get model center from bounding sphere (most reliable)
-    let centerX = 0,
-      centerY = 0,
-      centerZ = 0;
-    try {
-      const sphere = this.viewerEngine.GetBoundingSphere(false);
-      const c = sphere.GetCenter();
-      centerX = c.x;
-      centerY = c.y;
-      centerZ = c.z;
-      log("Model center (bounding sphere):", { x: centerX, y: centerY, z: centerZ });
-    } catch {
-      // Fallback: average of world positions
-      for (const part of this.allParts) {
-        const wm = part.threeMesh.matrixWorld.elements;
-        centerX += wm[12];
-        centerY += wm[13];
-        centerZ += wm[14];
-      }
-      centerX /= this.allParts.length;
-      centerY /= this.allParts.length;
-      centerZ /= this.allParts.length;
-      log("Model center (fallback average):", { x: centerX, y: centerY, z: centerZ });
-    }
-
-    // Get model size for scaling the explosion distance
+    // Get model size for scaling
     let modelSize = 1;
     try {
       const sphere = this.viewerEngine.GetBoundingSphere(false);
@@ -273,50 +248,25 @@ export class AssemblyGuideController {
       modelSize = 100; // fallback
     }
 
-    const { distance, multipliers = {} } = this.guide.explode;
+    const { distance, offsets } = this.guide.explode;
+    const baseDistance = distance * modelSize;
 
     for (const part of this.allParts) {
-      // Get this mesh's world position from its matrixWorld
-      const wm = part.threeMesh.matrixWorld.elements;
-      const worldX = wm[12];
-      const worldY = wm[13];
-      const worldZ = wm[14];
-
-      // Direction from center to part (in world space)
-      const dx = worldX - centerX;
-      const dy = worldY - centerY;
-      const dz = worldZ - centerZ;
-      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      // Per-prefix multiplier
-      let mult = 1.0;
-      for (const [prefix, m] of Object.entries(multipliers)) {
+      // Find the matching offset direction for this part
+      let ox = 0, oy = 0, oz = 0;
+      for (const [prefix, dir] of Object.entries(offsets)) {
         if (matchesPrefix(part.name, prefix)) {
-          mult = m;
+          ox = dir[0];
+          oy = dir[1];
+          oz = dir[2];
           break;
         }
       }
 
-      const effectiveDistance = distance * mult * modelSize;
-
-      // Compute offset (added to the mesh's LOCAL position)
-      // This is approximate but works well for cabinet models with simple hierarchies
-      let offsetX: number, offsetY: number, offsetZ: number;
-      if (len < 0.001) {
-        // Part at center, push along Y
-        offsetX = 0;
-        offsetY = effectiveDistance;
-        offsetZ = 0;
-      } else {
-        offsetX = (dx / len) * effectiveDistance;
-        offsetY = (dy / len) * effectiveDistance;
-        offsetZ = (dz / len) * effectiveDistance;
-      }
-
       part.explodedPos = {
-        x: part.assembledPos.x + offsetX,
-        y: part.assembledPos.y + offsetY,
-        z: part.assembledPos.z + offsetZ,
+        x: part.assembledPos.x + ox * baseDistance,
+        y: part.assembledPos.y + oy * baseDistance,
+        z: part.assembledPos.z + oz * baseDistance,
       };
     }
   }
