@@ -41,7 +41,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
         "Left Side": [-1, 0, 0],
         "Right Side": [1, 0, 0],
         Back: [0, 0, 1.4],
-        Door: [0, 0, 1.4],
+        Door: [0, -1.4, 0],
         "Counter Top": [0, 1.3, 0.3],
       },
     },
