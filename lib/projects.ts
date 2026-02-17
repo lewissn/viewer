@@ -18,6 +18,8 @@ export interface CabinetInstance {
   cabinetIndex: number;
   /** URL to the per-cabinet model file (GLB/3DS) */
   modelFileUrl?: string;
+  /** URL to the ERP CSV file for this cabinet */
+  erpCsvUrl?: string;
   /** Part names from ERP for this cabinet instance */
   erpParts: string[];
   /** Optional per-cabinet guide overrides from admin */
