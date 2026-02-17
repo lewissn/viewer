@@ -4,12 +4,18 @@
  * Manages the explosion, step state machine, highlight/dim, and animation
  * for the assembly guide wizard. Works with any Online3DViewer instance.
  *
+ * Supports two modes:
+ * 1. Legacy prefix-based (via init()) — uses AssemblyGuide config with prefix matching
+ * 2. Dynamic classification-based (via initDynamic()) — uses classifyPart() groupKeys
+ *
  * Key insight: Online3DViewer bakes o3dv Node transforms into THREE.js
  * Object3D parents at load time. To move parts at runtime, we must modify
  * the THREE.js mesh objects directly (mesh.position), NOT the o3dv Nodes.
  */
 
 import type { AssemblyGuide, AssemblyStep } from "./assemblyGuides";
+import { classifyPart, generateGuideFromParts } from "./classifyPart";
+import type { GuideOverrides } from "./projects";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -34,6 +40,7 @@ interface Vec3 {
 interface PartMesh {
   threeMesh: any; // THREE.Mesh
   name: string;
+  groupKey: string; // classification group
   assembledPos: Vec3; // original local position at load
   explodedPos: Vec3; // computed exploded local position
 }
@@ -76,63 +83,56 @@ function lerpVec3(a: Vec3, b: Vec3, t: number): Vec3 {
 // ── Controller Class ──
 
 export class AssemblyGuideController {
-  private guide: AssemblyGuide;
+  private guide: AssemblyGuide | null = null;
   private viewerEngine: any; // embeddedViewer.GetViewer()
   private OV: any; // online-3d-viewer module
 
   // All discovered THREE.Mesh parts
   private allParts: PartMesh[] = [];
-  // Grouped by normalized prefix
+  // Grouped by normalized prefix (legacy) OR groupKey (dynamic)
   private partGroups: Map<string, PartMesh[]> = new Map();
+
+  // Dynamic mode flag
+  private _dynamicMode = false;
+  // Step groupKeys for dynamic mode (each step maps to an array of groupKeys)
+  private _stepGroupKeys: string[][] = [];
 
   // State
   private _currentStep = -1; // -1 = intro
   private _isAnimating = false;
   private _activeSteps: AssemblyStep[] = [];
-  private _assembledPrefixes: Set<string> = new Set();
+  private _assembledKeys: Set<string> = new Set(); // prefixes (legacy) or groupKeys (dynamic)
 
   private listeners: StateListener[] = [];
   private animationFrameId: number | null = null;
 
-  constructor(guide: AssemblyGuide) {
-    this.guide = guide;
+  constructor(guide?: AssemblyGuide) {
+    this.guide = guide ?? null;
   }
 
-  // ── Initialization ──
+  // ── Initialization (Legacy prefix mode) ──
 
-  /** Called after the model has loaded in the viewer */
+  /** Called after the model has loaded in the viewer (legacy prefix-based) */
   init(embeddedViewer: any, OV: any) {
     this.viewerEngine = embeddedViewer.GetViewer();
     this.OV = OV;
+    this._dynamicMode = false;
 
-    // Always log diagnostics during init (helps debug model issues)
-    console.log("[AssemblyGuide] Initialising...");
-    console.log("[AssemblyGuide] viewerEngine:", !!this.viewerEngine);
-    console.log("[AssemblyGuide] viewerEngine.mainModel:", !!this.viewerEngine?.mainModel);
+    console.log("[AssemblyGuide] Initialising (legacy mode)...");
 
-    // Enumerate all THREE.Mesh objects via the viewer's mainModel
     this.collectParts();
-
-    console.log("[AssemblyGuide] Parts found:", this.allParts.length);
-    if (this.allParts.length > 0) {
-      console.log("[AssemblyGuide] Part names:", this.allParts.map((p) => p.name));
-    }
 
     if (this.allParts.length === 0) {
       console.warn("[AssemblyGuide] No mesh parts found! Steps will be empty.");
-      // Still notify so the UI can show the intro
       this.notifyListeners();
       return;
     }
 
-    // Group by prefix
     this.groupPartsByPrefix();
-
-    // Compute exploded positions
-    this.computeExplodedPositions();
+    this.computeExplodedPositionsLegacy();
 
     // Filter out steps with no matching parts
-    this._activeSteps = this.guide.steps.filter((step) => {
+    this._activeSteps = this.guide!.steps.filter((step) => {
       const count = step.prefixes.reduce((sum, p) => {
         return sum + (this.partGroups.get(normalizePartName(p))?.length || 0);
       }, 0);
@@ -146,9 +146,64 @@ export class AssemblyGuideController {
 
     console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
 
-    // Intro shows the fully assembled cabinet (don't explode yet)
     this._currentStep = -1;
-    this._assembledPrefixes.clear();
+    this._assembledKeys.clear();
+    this.notifyListeners();
+  }
+
+  // ── Initialization (Dynamic classification mode) ──
+
+  /** Called after model has loaded — uses classifyPart() for dynamic guide generation */
+  initDynamic(embeddedViewer: any, OV: any, overrides?: GuideOverrides) {
+    this.viewerEngine = embeddedViewer.GetViewer();
+    this.OV = OV;
+    this._dynamicMode = true;
+
+    console.log("[AssemblyGuide] Initialising (dynamic mode)...");
+
+    this.collectParts();
+
+    if (this.allParts.length === 0) {
+      console.warn("[AssemblyGuide] No mesh parts found! Steps will be empty.");
+      this.notifyListeners();
+      return;
+    }
+
+    // Classify and group by groupKey
+    this.groupPartsByClassification();
+
+    // Generate guide from detected parts
+    const partNames = this.allParts.map((p) => p.name);
+    const generated = generateGuideFromParts(partNames, overrides);
+
+    console.log("[AssemblyGuide] Detected groups:", generated.detectedGroups);
+
+    // Compute exploded positions using groupKey offsets
+    this.computeExplodedPositionsDynamic(generated.explodeOffsets);
+
+    // Convert generated steps to AssemblyStep format
+    // In dynamic mode, "prefixes" are actually groupKeys
+    this._activeSteps = [];
+    this._stepGroupKeys = [];
+
+    for (const step of generated.steps) {
+      // Only include if group has parts
+      const hasParts = step.groupKeys.some(
+        (k) => (this.partGroups.get(k)?.length ?? 0) > 0
+      );
+      if (!hasParts) continue;
+
+      this._activeSteps.push({
+        prefixes: step.groupKeys, // reuse prefixes field for groupKeys
+        copy: step.copy,
+      });
+      this._stepGroupKeys.push(step.groupKeys);
+    }
+
+    console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
+
+    this._currentStep = -1;
+    this._assembledKeys.clear();
     this.notifyListeners();
   }
 
@@ -156,7 +211,6 @@ export class AssemblyGuideController {
   private collectParts() {
     this.allParts = [];
 
-    // Try the viewer's EnumerateMeshesAndLines method
     try {
       const mainModel = this.viewerEngine?.mainModel;
       if (!mainModel) {
@@ -165,54 +219,49 @@ export class AssemblyGuideController {
       }
 
       if (typeof mainModel.EnumerateMeshesAndLines !== "function") {
-        console.error("[AssemblyGuide] EnumerateMeshesAndLines is not a function. mainModel keys:", Object.keys(mainModel));
+        console.error("[AssemblyGuide] EnumerateMeshesAndLines is not a function.");
         return;
       }
 
-      let totalVisited = 0;
-      let meshCount = 0;
-      let noUserData = 0;
-      let noName = 0;
-
       mainModel.EnumerateMeshesAndLines((obj: any) => {
-        totalVisited++;
-
         if (!obj.isMesh) return;
-        meshCount++;
 
         const mi = obj.userData?.originalMeshInstance;
-        if (!mi) {
-          noUserData++;
-          return;
-        }
+        if (!mi) return;
 
         const name =
           mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-        if (!name) {
-          noName++;
-          return;
-        }
+        if (!name) return;
+
+        const { groupKey } = classifyPart(name);
 
         this.allParts.push({
           threeMesh: obj,
           name,
+          groupKey,
           assembledPos: {
             x: obj.position.x,
             y: obj.position.y,
             z: obj.position.z,
           },
-          explodedPos: { x: 0, y: 0, z: 0 }, // computed below
+          explodedPos: { x: 0, y: 0, z: 0 },
         });
       });
 
-      console.log(`[AssemblyGuide] Enumeration: ${totalVisited} objects visited, ${meshCount} meshes, ${noUserData} without userData, ${noName} without name, ${this.allParts.length} usable parts`);
+      console.log(`[AssemblyGuide] Parts found: ${this.allParts.length}`);
+      if (this.allParts.length > 0) {
+        log("Part names:", this.allParts.map((p) => `${p.name} -> ${p.groupKey}`));
+      }
     } catch (e) {
       console.error("[AssemblyGuide] Failed to enumerate meshes:", e);
     }
   }
 
-  /** Group parts by step prefix */
+  /** Group parts by step prefix (legacy mode) */
   private groupPartsByPrefix() {
+    this.partGroups.clear();
+    if (!this.guide) return;
+
     const allPrefixes = new Set<string>();
     for (const step of this.guide.steps) {
       for (const prefix of step.prefixes) {
@@ -226,30 +275,39 @@ export class AssemblyGuideController {
         matchesPrefix(part.name, prefix)
       );
       this.partGroups.set(normalizedPrefix, matched);
-      console.log(
-        `[AssemblyGuide] Prefix "${prefix}": ${matched.length} parts matched`,
-        matched.map((p) => p.name)
-      );
+      log(`Prefix "${prefix}": ${matched.length} parts matched`);
     }
   }
 
-  /** Compute exploded positions using explicit per-prefix offset directions */
-  private computeExplodedPositions() {
-    // Get model size for scaling
+  /** Group parts by classification groupKey (dynamic mode) */
+  private groupPartsByClassification() {
+    this.partGroups.clear();
+
+    for (const part of this.allParts) {
+      const group = this.partGroups.get(part.groupKey) ?? [];
+      group.push(part);
+      this.partGroups.set(part.groupKey, group);
+    }
+
+    for (const [key, parts] of this.partGroups) {
+      log(`GroupKey "${key}": ${parts.length} parts`, parts.map((p) => p.name));
+    }
+  }
+
+  /** Compute exploded positions — legacy prefix mode */
+  private computeExplodedPositionsLegacy() {
     let modelSize = 1;
     try {
       const sphere = this.viewerEngine.GetBoundingSphere(false);
       modelSize = sphere.GetRadius();
-      log("Model radius:", modelSize);
     } catch {
-      modelSize = 100; // fallback
+      modelSize = 100;
     }
 
-    const { distance, offsets } = this.guide.explode;
+    const { distance, offsets } = this.guide!.explode;
     const baseDistance = distance * modelSize;
 
     for (const part of this.allParts) {
-      // Find the matching offset direction for this part
       let ox = 0, oy = 0, oz = 0;
       for (const [prefix, dir] of Object.entries(offsets)) {
         if (matchesPrefix(part.name, prefix)) {
@@ -264,6 +322,30 @@ export class AssemblyGuideController {
         x: part.assembledPos.x + ox * baseDistance,
         y: part.assembledPos.y + oy * baseDistance,
         z: part.assembledPos.z + oz * baseDistance,
+      };
+    }
+  }
+
+  /** Compute exploded positions — dynamic classification mode */
+  private computeExplodedPositionsDynamic(
+    offsets: Record<string, [number, number, number]>
+  ) {
+    let modelSize = 1;
+    try {
+      const sphere = this.viewerEngine.GetBoundingSphere(false);
+      modelSize = sphere.GetRadius();
+    } catch {
+      modelSize = 100;
+    }
+
+    const baseDistance = 4.8 * modelSize;
+
+    for (const part of this.allParts) {
+      const dir = offsets[part.groupKey] ?? [0, 0.5, 0.5];
+      part.explodedPos = {
+        x: part.assembledPos.x + dir[0] * baseDistance,
+        y: part.assembledPos.y + dir[1] * baseDistance,
+        z: part.assembledPos.z + dir[2] * baseDistance,
       };
     }
   }
@@ -295,32 +377,56 @@ export class AssemblyGuideController {
     }
   }
 
-  // ── Highlight / Dim ──
+  // ── Part lookup ──
 
-  private getPartsForPrefixes(prefixes: string[]): PartMesh[] {
+  private getPartsForStep(step: AssemblyStep): PartMesh[] {
+    if (this._dynamicMode) {
+      // In dynamic mode, step.prefixes contains groupKeys
+      const parts: PartMesh[] = [];
+      for (const key of step.prefixes) {
+        const group = this.partGroups.get(key);
+        if (group) parts.push(...group);
+      }
+      return parts;
+    }
+    // Legacy mode: prefix matching
     const parts: PartMesh[] = [];
-    for (const prefix of prefixes) {
+    for (const prefix of step.prefixes) {
       const group = this.partGroups.get(normalizePartName(prefix));
       if (group) parts.push(...group);
     }
     return parts;
   }
 
+  // ── Highlight / Dim ──
+
   /** Apply highlight to focus parts */
-  applyHighlightDim(focusPrefixes: string[]) {
+  applyHighlightDim(step: AssemblyStep) {
     try {
       const focusColor = new this.OV.RGBColor(0, 113, 227); // Apple blue
 
-      this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
-        if (!userData?.originalMeshInstance) return false;
-        const mi = userData.originalMeshInstance;
-        const name =
-          mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-        for (const prefix of focusPrefixes) {
-          if (matchesPrefix(name, prefix)) return true;
-        }
-        return false;
-      });
+      if (this._dynamicMode) {
+        const keys = new Set(step.prefixes); // groupKeys
+        this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
+          if (!userData?.originalMeshInstance) return false;
+          const mi = userData.originalMeshInstance;
+          const name =
+            mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+          const { groupKey } = classifyPart(name);
+          return keys.has(groupKey);
+        });
+      } else {
+        this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
+          if (!userData?.originalMeshInstance) return false;
+          const mi = userData.originalMeshInstance;
+          const name =
+            mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+          for (const prefix of step.prefixes) {
+            if (matchesPrefix(name, prefix)) return true;
+          }
+          return false;
+        });
+      }
 
       this.renderViewer();
     } catch {
@@ -339,33 +445,36 @@ export class AssemblyGuideController {
     }
   }
 
-  // ── Transparency ──
+  // ── Visibility ──
 
-  /** Show or hide a part */
   private setPartVisible(part: PartMesh, visible: boolean) {
     part.threeMesh.visible = visible;
   }
 
-  /** Apply visibility: inactive parts (not assembled, not current step) are hidden */
-  private applyVisibility(currentPrefixes: string[]) {
-    const currentSet = new Set(currentPrefixes.map(normalizePartName));
+  /** Apply visibility based on assembled/current step keys */
+  private applyVisibility(currentKeys: string[]) {
+    const currentSet = new Set(
+      this._dynamicMode
+        ? currentKeys
+        : currentKeys.map(normalizePartName)
+    );
 
     for (const part of this.allParts) {
-      const norm = normalizePartName(part.name);
+      const partKey = this._dynamicMode
+        ? part.groupKey
+        : normalizePartName(part.name);
 
-      // Check if this part belongs to an already-assembled step
       let isAssembled = false;
-      for (const prefix of this._assembledPrefixes) {
-        if (norm.startsWith(prefix)) {
+      for (const key of this._assembledKeys) {
+        if (this._dynamicMode ? partKey === key : partKey.startsWith(key)) {
           isAssembled = true;
           break;
         }
       }
 
-      // Check if this part belongs to the current step
       let isCurrent = false;
-      for (const prefix of currentSet) {
-        if (norm.startsWith(prefix)) {
+      for (const key of currentSet) {
+        if (this._dynamicMode ? partKey === key : partKey.startsWith(key)) {
           isCurrent = true;
           break;
         }
@@ -375,7 +484,6 @@ export class AssemblyGuideController {
     }
   }
 
-  /** Make all parts visible */
   private showAllParts() {
     for (const part of this.allParts) {
       this.setPartVisible(part, true);
@@ -428,9 +536,8 @@ export class AssemblyGuideController {
     });
   }
 
-  /** Animate parts from current position to assembled */
-  private async animateAssemble(prefixes: string[], duration = 700) {
-    const parts = this.getPartsForPrefixes(prefixes);
+  private async animateAssembleStep(step: AssemblyStep, duration = 700) {
+    const parts = this.getPartsForStep(step);
     if (parts.length === 0) return;
 
     const fromPositions = new Map<PartMesh, Vec3>();
@@ -459,14 +566,25 @@ export class AssemblyGuideController {
     };
   }
 
-  /** Move to next step */
+  /** Mark a step's keys as assembled */
+  private markStepAssembled(step: AssemblyStep) {
+    if (this._dynamicMode) {
+      for (const key of step.prefixes) {
+        this._assembledKeys.add(key);
+      }
+    } else {
+      for (const p of step.prefixes) {
+        this._assembledKeys.add(normalizePartName(p));
+      }
+    }
+  }
+
   async next() {
     if (this._isAnimating) return;
 
     const nextStep = this._currentStep + 1;
 
     if (nextStep >= this._activeSteps.length) {
-      // Complete
       this._currentStep = this._activeSteps.length;
       this.clearHighlight();
       this.showAllParts();
@@ -474,7 +592,6 @@ export class AssemblyGuideController {
       return;
     }
 
-    // Transitioning from intro: explode all parts first
     if (this._currentStep === -1) {
       this.applyExplodedToAll();
     }
@@ -484,31 +601,23 @@ export class AssemblyGuideController {
 
     const step = this._activeSteps[nextStep];
 
-    // Highlight focus parts and hide inactive
-    this.applyHighlightDim(step.prefixes);
+    this.applyHighlightDim(step);
     this.applyVisibility(step.prefixes);
 
-    // Animate these parts from exploded to assembled
-    await this.animateAssemble(step.prefixes);
+    await this.animateAssembleStep(step);
 
-    // Mark these prefixes as assembled
-    for (const p of step.prefixes) {
-      this._assembledPrefixes.add(normalizePartName(p));
-    }
+    this.markStepAssembled(step);
 
-    // Clear highlight after animation, keep transparency for remaining steps
     this.clearHighlight();
     this.applyVisibility([]);
     this.renderViewer();
   }
 
-  /** Go back one step (reset + replay approach) */
   async back() {
     if (this._isAnimating) return;
     if (this._currentStep <= 0) {
-      // Go back to intro – show fully assembled cabinet
       this._currentStep = -1;
-      this._assembledPrefixes.clear();
+      this._assembledKeys.clear();
       for (const part of this.allParts) {
         this.applyAssembledToPart(part);
       }
@@ -521,21 +630,17 @@ export class AssemblyGuideController {
 
     const targetStep = this._currentStep - 1;
 
-    // Reset everything to exploded
-    this._assembledPrefixes.clear();
+    this._assembledKeys.clear();
     this.applyExplodedToAll();
     this.clearHighlight();
 
-    // Replay steps 0 through targetStep (snap, no animation)
     for (let i = 0; i <= targetStep; i++) {
       const step = this._activeSteps[i];
-      const parts = this.getPartsForPrefixes(step.prefixes);
+      const parts = this.getPartsForStep(step);
       for (const part of parts) {
         this.applyAssembledToPart(part);
       }
-      for (const p of step.prefixes) {
-        this._assembledPrefixes.add(normalizePartName(p));
-      }
+      this.markStepAssembled(step);
     }
 
     this._currentStep = targetStep;
@@ -544,11 +649,10 @@ export class AssemblyGuideController {
     this.notifyListeners();
   }
 
-  /** Restart the guide from the beginning – show fully assembled cabinet */
   restart() {
     if (this._isAnimating) return;
     this._currentStep = -1;
-    this._assembledPrefixes.clear();
+    this._assembledKeys.clear();
     for (const part of this.allParts) {
       this.applyAssembledToPart(part);
     }
@@ -558,7 +662,6 @@ export class AssemblyGuideController {
     this.notifyListeners();
   }
 
-  /** Close the wizard (assemble all, clear highlight) */
   close() {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
@@ -566,7 +669,6 @@ export class AssemblyGuideController {
     }
     this._isAnimating = false;
 
-    // Snap everything to assembled
     for (const part of this.allParts) {
       this.applyAssembledToPart(part);
     }
