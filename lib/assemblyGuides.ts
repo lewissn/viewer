@@ -32,10 +32,11 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
     modelUrl:
       "https://viewer.thecabinetshop.co.uk/assets/assembly-guides/low-double-cupboard/v1/model.glb",
     explode: {
-      distance: 0.35,
+      distance: 1.5,
       multipliers: {
-        Door: 1.2,
+        Door: 1.3,
         Back: 1.1,
+        "Counter Top": 1.2,
       },
     },
     steps: [
@@ -44,7 +45,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
         copy: "Connect the bottom and plinth panels.",
       },
       {
-        prefixes: ["Vertical Divider", "Top"],
+        prefixes: ["Vertical Division", "Top"],
         copy: "Fit the divider and top panel.",
       },
       {

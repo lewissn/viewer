@@ -44,7 +44,7 @@ export default function AssemblyClient({ guide }: Props) {
       backgroundColor: new OV.RGBAColor(250, 250, 250, 255),
       defaultColor: new OV.RGBColor(200, 200, 200),
       edgeSettings: new OV.EdgeSettings(
-        true,
+        false,
         new OV.RGBColor(68, 68, 68),
         1
       ),
