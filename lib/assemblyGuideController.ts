@@ -349,8 +349,10 @@ export class AssemblyGuideController {
     for (const m of materials) {
       m.transparent = opacity < 1;
       m.opacity = opacity;
+      m.depthWrite = opacity > 0;
       m.needsUpdate = true;
     }
+    part.threeMesh.visible = opacity > 0;
   }
 
   /** Apply transparency: inactive parts (not assembled, not current step) are dimmed */
