@@ -7,6 +7,7 @@ import {
   AssemblyGuideController,
   type ControllerState,
 } from "@/lib/assemblyGuideController";
+import { DesktopSidebar, MobileNav } from "../side-nav";
 
 interface Props {
   guide: AssemblyGuide;
@@ -109,39 +110,45 @@ export default function AssemblyClient({ guide }: Props) {
       : null;
 
   return (
-    <div className="relative w-screen h-screen bg-[#fafafa] overflow-hidden">
-      {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 pointer-events-none">
-        {/* Left: branding */}
-        <div className="pointer-events-auto">
-          <div className="backdrop-blur-xl bg-white/70 rounded-xl px-4 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.08)] flex items-center">
-            <Image
-              src="/logo.png"
-              alt="The Cabinet Shop"
-              width={120}
-              height={32}
-              className="h-6 w-auto"
-              priority
-            />
-            <span className="ml-2 text-[12px] text-[#86868b]">
-              Assembly Guide
-            </span>
-          </div>
-        </div>
+    <div className="flex w-screen h-screen bg-[#fafafa] overflow-hidden">
+      {/* Desktop sidebar */}
+      <DesktopSidebar />
 
-        {/* Right: reopen wizard button (when wizard is closed) */}
-        {!wizardOpen && !loading && !loadError && (
-          <div className="pointer-events-auto">
-            <button
-              onClick={handleReopen}
-              className="flex items-center gap-1.5 h-9 px-3 rounded-xl backdrop-blur-xl bg-white/70 text-[#1d1d1f] shadow-[0_1px_8px_rgba(0,0,0,0.08)] hover:bg-white/90 transition-all active:scale-95 text-[13px] font-medium"
-            >
-              <GuideIcon />
-              Guide
-            </button>
+      {/* Main viewer area */}
+      <div className="relative flex-1 h-screen overflow-hidden">
+        {/* Top bar */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 pointer-events-none">
+          {/* Left: hamburger (mobile) + branding */}
+          <div className="pointer-events-auto flex items-center gap-2">
+            <MobileNav />
+            <div className="backdrop-blur-xl bg-white/70 rounded-xl px-4 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.08)] flex items-center">
+              <Image
+                src="/logo.png"
+                alt="The Cabinet Shop"
+                width={120}
+                height={32}
+                className="h-6 w-auto"
+                priority
+              />
+              <span className="ml-2 text-[12px] text-[#86868b]">
+                Assembly Guide
+              </span>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Right: reopen wizard button (when wizard is closed) */}
+          {!wizardOpen && !loading && !loadError && (
+            <div className="pointer-events-auto">
+              <button
+                onClick={handleReopen}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-xl backdrop-blur-xl bg-white/70 text-[#1d1d1f] shadow-[0_1px_8px_rgba(0,0,0,0.08)] hover:bg-white/90 transition-all active:scale-95 text-[13px] font-medium"
+              >
+                <GuideIcon />
+                Guide
+              </button>
+            </div>
+          )}
+        </div>
 
       {/* Loading state */}
       {loading && (
@@ -320,6 +327,7 @@ export default function AssemblyClient({ guide }: Props) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
