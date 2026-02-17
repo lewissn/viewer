@@ -142,3 +142,39 @@ export function parseErpCsv(csvText: string): ErpParseResult {
 
   return { projectName, cabinets, warnings };
 }
+
+/**
+ * Parse a simple parts list for a single cabinet.
+ *
+ * Accepts either:
+ *  - One part name per line
+ *  - CSV rows where the last non-empty column is the part name
+ *
+ * Returns a deduplicated list of part names.
+ */
+export function parsePartsList(text: string): { parts: string[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length === 0) {
+    return { parts: [], warnings: ["No data provided."] };
+  }
+
+  const parts: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const fields = parseCSVLine(lines[i]);
+    // Use last non-empty field as the part name (supports both plain lists and CSV)
+    const name = [...fields].reverse().find((f) => f.length > 0);
+    if (name) {
+      parts.push(name);
+    } else {
+      warnings.push(`Line ${i + 1}: empty row, skipped.`);
+    }
+  }
+
+  return { parts, warnings };
+}
