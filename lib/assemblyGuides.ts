@@ -30,7 +30,7 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
   "low-double-cupboard": {
     title: "Low Double Cupboard",
     modelUrl:
-      "https://viewer.thecabinetshop.co.uk/assets/assembly-guides/low-double-cupboard/v1/model.glb",
+      "https://www.dropbox.com/scl/fi/6tr564o5gpg8tlknjxfi4/LDC.3ds?rlkey=rbf45xegiuhf9aouvshvegza6&dl=0",
     explode: {
       distance: 0.35,
       multipliers: {
