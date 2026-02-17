@@ -146,10 +146,7 @@ export class AssemblyGuideController {
 
     console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
 
-    // Apply exploded positions immediately
-    this.applyExplodedToAll();
-
-    // Start at intro
+    // Intro shows the fully assembled cabinet (don't explode yet)
     this._currentStep = -1;
     this._assembledPrefixes.clear();
     this.notifyListeners();
@@ -384,7 +381,7 @@ export class AssemblyGuideController {
       if (isAssembled || isCurrent) {
         this.setPartOpacity(part, 1.0);
       } else {
-        this.setPartOpacity(part, 0.2);
+        this.setPartOpacity(part, 0);
       }
     }
   }
@@ -488,12 +485,17 @@ export class AssemblyGuideController {
       return;
     }
 
+    // Transitioning from intro: explode all parts first
+    if (this._currentStep === -1) {
+      this.applyExplodedToAll();
+    }
+
     this._currentStep = nextStep;
     this.notifyListeners();
 
     const step = this._activeSteps[nextStep];
 
-    // Highlight focus parts and dim inactive
+    // Highlight focus parts and hide inactive
     this.applyHighlightDim(step.prefixes);
     this.applyTransparency(step.prefixes);
 
@@ -515,12 +517,15 @@ export class AssemblyGuideController {
   async back() {
     if (this._isAnimating) return;
     if (this._currentStep <= 0) {
-      // Go back to intro
+      // Go back to intro – show fully assembled cabinet
       this._currentStep = -1;
       this._assembledPrefixes.clear();
-      this.applyExplodedToAll();
+      for (const part of this.allParts) {
+        this.applyAssembledToPart(part);
+      }
       this.clearHighlight();
       this.clearTransparency();
+      this.renderViewer();
       this.notifyListeners();
       return;
     }
@@ -550,14 +555,17 @@ export class AssemblyGuideController {
     this.notifyListeners();
   }
 
-  /** Restart the guide from the beginning */
+  /** Restart the guide from the beginning – show fully assembled cabinet */
   restart() {
     if (this._isAnimating) return;
     this._currentStep = -1;
     this._assembledPrefixes.clear();
-    this.applyExplodedToAll();
+    for (const part of this.allParts) {
+      this.applyAssembledToPart(part);
+    }
     this.clearHighlight();
     this.clearTransparency();
+    this.renderViewer();
     this.notifyListeners();
   }
 
