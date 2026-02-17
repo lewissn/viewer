@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 interface ModelView {
   id: string;
@@ -206,6 +207,24 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+        {/* Assembly Guides */}
+        <Link
+          href="/admin/projects"
+          className="mt-6 block bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-6 transition-all hover:shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.1)] active:scale-[0.99]"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[#1d1d1f]">
+                Assembly Guides
+              </h2>
+              <p className="mt-1 text-[14px] text-[#86868b]">
+                Create and manage customer assembly guide projects
+              </p>
+            </div>
+            <span className="text-[20px] text-[#86868b]">&rarr;</span>
+          </div>
+        </Link>
 
         {/* Footer */}
         <p className="mt-6 text-center text-[12px] text-[#86868b]">
