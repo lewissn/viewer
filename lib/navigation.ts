@@ -37,6 +37,10 @@ export const NAVIGATION: NavSection[] = [
     title: "Fittings Guide",
     items: [
       {
+        type: "group",
+        label: "Hardware",
+        children: [
+      {
         type: "modal",
         label: "Hinges",
         href: "/assets/fittings/hinges.pdf",
@@ -51,6 +55,8 @@ export const NAVIGATION: NavSection[] = [
         label: "Drawer Runners",
         href: "/assets/fittings/drawer-runners.pdf",
       },
+    ],
+  },
     ],
   },
   {
