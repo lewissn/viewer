@@ -26,6 +26,7 @@ export default function ProjectClient({ project }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [wizardOpen, setWizardOpen] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [activeCabinetId, setActiveCabinetId] = useState<string | null>(null);
   const [state, setState] = useState<ControllerState>({
     currentStep: -1,
@@ -204,20 +205,165 @@ export default function ProjectClient({ project }: Props) {
           )}
         </div>
 
-        {/* Empty state — no cabinet selected */}
+        {/* Welcome intro — no cabinet selected */}
         {!hasCabinet && !loading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-6">
-            <h2 className="text-[20px] font-semibold text-[#1d1d1f] mb-2">
-              {project.projectName}
-            </h2>
-            {project.customerName && (
-              <p className="text-[14px] text-[#86868b] mb-4">
-                {project.customerName}
-              </p>
+          <div className="absolute inset-0 z-10 flex items-center justify-center px-4">
+            {showWelcome ? (
+              <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in">
+                {/* Header */}
+                <div className="px-6 pt-6 pb-4 border-b border-[#f0f0f0]">
+                  <p className="text-[12px] font-medium text-[#0071e3] uppercase tracking-wider mb-1">
+                    Assembly Guide
+                  </p>
+                  <h2 className="text-[22px] font-semibold text-[#1d1d1f]">
+                    Welcome{project.customerName ? `, ${project.customerName}` : ""}!
+                  </h2>
+                  <p className="mt-1 text-[14px] text-[#86868b]">
+                    {project.projectName}
+                  </p>
+                </div>
+
+                {/* Content */}
+                <div className="px-6 py-5 space-y-5">
+                  <p className="text-[14px] text-[#424245] leading-relaxed">
+                    This interactive guide will walk you through assembling each
+                    cabinet in your project step by step. Before you begin, take
+                    a few minutes to prepare — it will make the whole process
+                    smoother and quicker.
+                  </p>
+
+                  {/* Tip 1 */}
+                  <div className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#f0f5ff] flex items-center justify-center mt-0.5">
+                      <svg className="w-4 h-4 text-[#0071e3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[#1d1d1f] mb-0.5">
+                        Prepare your space
+                      </h4>
+                      <p className="text-[13px] text-[#424245] leading-relaxed">
+                        Clear a flat, clean area large enough to lay out all
+                        your panels. A soft surface such as cardboard or a
+                        blanket will protect panel faces from scratches.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tip 2 */}
+                  <div className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#f0f5ff] flex items-center justify-center mt-0.5">
+                      <svg className="w-4 h-4 text-[#0071e3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[#1d1d1f] mb-0.5">
+                        Unpack and organise panels
+                      </h4>
+                      <p className="text-[13px] text-[#424245] leading-relaxed">
+                        Lay out all panels for the cabinet you are about to
+                        build. Familiarise yourself with each piece — the
+                        printed labels on the edges will match the part names
+                        shown in the guide.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tip 3 */}
+                  <div className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#f0f5ff] flex items-center justify-center mt-0.5">
+                      <svg className="w-4 h-4 text-[#0071e3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.384-3.08A1.615 1.615 0 015 10.683V6.748a1.615 1.615 0 011.036-1.506l5.384-3.08a1.615 1.615 0 011.16 0l5.384 3.08A1.615 1.615 0 0119 6.748v3.935a1.615 1.615 0 01-1.036 1.506l-5.384 3.08a1.615 1.615 0 01-1.16 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[#1d1d1f] mb-0.5">
+                        Sort your fittings
+                      </h4>
+                      <p className="text-[13px] text-[#424245] leading-relaxed">
+                        Open all fitting bags and group them by type — cams,
+                        screws, hinges, brackets, etc. Check the{" "}
+                        <strong>Included Fittings</strong> list in the sidebar
+                        to confirm everything is present.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tip 4 */}
+                  <div className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#fff8eb] flex items-center justify-center mt-0.5">
+                      <svg className="w-4 h-4 text-[#e67e00]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[#1d1d1f] mb-0.5">
+                        Pre-insert cams, cam pins and hinge plates
+                      </h4>
+                      <p className="text-[13px] text-[#424245] leading-relaxed">
+                        Before starting assembly, push all <strong>Rafix cam
+                        pins</strong> into their pre-drilled holes, press the{" "}
+                        <strong>Rafix cams</strong> into their housings (do not
+                        turn yet), and screw <strong>hinge plates</strong> to
+                        the inside of side panels. This saves a lot of time
+                        during the build.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tip 5 */}
+                  <div className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#f0f5ff] flex items-center justify-center mt-0.5">
+                      <svg className="w-4 h-4 text-[#0071e3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[#1d1d1f] mb-0.5">
+                        Tools you will need
+                      </h4>
+                      <p className="text-[13px] text-[#424245] leading-relaxed">
+                        A Pozidriv screwdriver (PZ2), a soft mallet or rubber
+                        hammer, and a measuring tape. A cordless drill will
+                        speed things up but is not essential.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 pb-6 pt-2 flex items-center justify-between">
+                  <button
+                    onClick={() => setShowWelcome(false)}
+                    className="text-[13px] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
+                  >
+                    Skip
+                  </button>
+                  <button
+                    onClick={() => setShowWelcome(false)}
+                    className="px-6 py-2.5 rounded-full bg-[#0071e3] text-white text-[14px] font-medium hover:bg-[#0077ed] transition-colors active:scale-95"
+                  >
+                    Get Started
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center">
+                <h2 className="text-[20px] font-semibold text-[#1d1d1f] mb-2">
+                  {project.projectName}
+                </h2>
+                {project.customerName && (
+                  <p className="text-[14px] text-[#86868b] mb-4">
+                    {project.customerName}
+                  </p>
+                )}
+                <p className="text-[15px] text-[#424245] text-center max-w-sm">
+                  Select a cabinet from the sidebar to begin.
+                </p>
+              </div>
             )}
-            <p className="text-[15px] text-[#424245] text-center max-w-sm">
-              Select a cabinet from the sidebar to view its assembly guide.
-            </p>
           </div>
         )}
 
