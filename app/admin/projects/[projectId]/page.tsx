@@ -330,6 +330,30 @@ export default function ProjectEditorPage() {
                     </button>
                   </div>
 
+                  {/* Assembly guide flags */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id={`overlay-${cab.cabinetId}`}
+                      checked={cab.guideOverrides?.bottomOverlaysSides ?? false}
+                      onChange={(e) =>
+                        updateCabinet(cab.cabinetId, {
+                          guideOverrides: {
+                            ...cab.guideOverrides,
+                            bottomOverlaysSides: e.target.checked,
+                          },
+                        })
+                      }
+                      className="rounded border-[#d2d2d7] text-[#0071e3] focus:ring-[#0071e3]"
+                    />
+                    <label
+                      htmlFor={`overlay-${cab.cabinetId}`}
+                      className="text-[12px] text-[#424245]"
+                    >
+                      Bottom overlays sides (upper unit)
+                    </label>
+                  </div>
+
                   {/* Model URL */}
                   <div className="mb-3">
                     <label className="block text-[12px] font-medium text-[#86868b] mb-1">

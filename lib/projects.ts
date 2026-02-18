@@ -11,6 +11,8 @@ export interface GuideOverrides {
   stepCopy?: Record<string, string>;
   /** Override explode offsets per groupKey */
   explodeOffsets?: Record<string, [number, number, number]>;
+  /** Upper unit / dresser: bottom overlays sides, must be fitted AFTER sides */
+  bottomOverlaysSides?: boolean;
 }
 
 export interface CabinetInstance {
