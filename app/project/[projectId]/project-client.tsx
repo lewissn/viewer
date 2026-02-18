@@ -19,6 +19,7 @@ interface Props {
 
 export default function ProjectClient({ project }: Props) {
   const searchParams = useSearchParams();
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const controllerRef = useRef<AssemblyGuideController | null>(null);
@@ -191,7 +192,6 @@ export default function ProjectClient({ project }: Props) {
 
   const cabinetTitle = activeCabinet?.cabinetName ?? project.projectName;
   const hasCabinet = !!activeCabinet?.modelFileUrl;
-  const { theme } = useTheme();
 
   return (
     <div className="flex w-screen h-screen bg-[var(--background)] overflow-hidden transition-colors">
