@@ -392,6 +392,16 @@ export class AssemblyGuideController {
     this.setPartPosition(part, part.assembledPos);
   }
 
+  /** Move only drawer parts to exploded position (for insert step) */
+  private applyExplodedToDrawerPartsOnly() {
+    for (const part of this.allParts) {
+      if (DRAWER_GROUP_KEYS.has(part.groupKey)) {
+        this.setPartPosition(part, part.explodedPos);
+      }
+    }
+    this.renderViewer();
+  }
+
   private renderViewer() {
     try {
       this.viewerEngine?.Render?.();
@@ -523,10 +533,22 @@ export class AssemblyGuideController {
     part.threeMesh.visible = visible;
   }
 
+  /** Index of last drawer step (insertAll) — drawers stay visible on and after this */
+  private getLastDrawerStepIndex(): number {
+    for (let i = this._stepDrawerModes.length - 1; i >= 0; i--) {
+      if (this._stepDrawerModes[i] === "insertAll") return i;
+    }
+    return -1;
+  }
+
   /** Apply visibility based on assembled/current step keys */
   private applyVisibility(
     currentKeys: string[],
-    options?: { drawerMode?: string; currentPartNames?: Set<string> }
+    options?: {
+      drawerMode?: string;
+      currentPartNames?: Set<string>;
+      currentStepIndex?: number;
+    }
   ) {
     const currentSet = new Set(
       this._dynamicMode
@@ -534,14 +556,33 @@ export class AssemblyGuideController {
         : currentKeys.map(normalizePartName)
     );
     const isDrawerStep = currentKeys.some((k) => DRAWER_GROUP_KEYS.has(k));
+    const lastDrawerIdx = this.getLastDrawerStepIndex();
+    const pastInsertStep =
+      options?.currentStepIndex !== undefined &&
+      lastDrawerIdx >= 0 &&
+      options.currentStepIndex > lastDrawerIdx;
 
     for (const part of this.allParts) {
       const isDrawerPart = DRAWER_GROUP_KEYS.has(part.groupKey);
 
-      // Hide drawer parts when not on a drawer step
-      if (isDrawerPart && !isDrawerStep) {
-        this.setPartVisible(part, false);
-        continue;
+      // Drawer visibility: hide during carcass (between assemble and insert)
+      if (isDrawerPart) {
+        if (pastInsertStep) {
+          // After insert: show assembled drawers
+          this.setPartVisible(part, true);
+          continue;
+        }
+        if (!isDrawerStep) {
+          // Not on a drawer step: hide
+          this.setPartVisible(part, false);
+          continue;
+        }
+        // On drawer step: assembleFirst shows only first drawer's parts
+        if (options?.drawerMode === "assembleFirst" && options?.currentPartNames) {
+          const show = options.currentPartNames.has(part.name);
+          this.setPartVisible(part, show);
+          continue;
+        }
       }
 
       const partKey = this._dynamicMode
@@ -628,6 +669,42 @@ export class AssemblyGuideController {
     const parts = this.getPartsForStep(step);
     if (parts.length === 0) return;
 
+    // assembleFirst: animate box parts first, then front (sequential)
+    if (step.drawerMode === "assembleFirst") {
+      const boxParts = parts.filter((p) => p.groupKey !== "Drawer");
+      const frontParts = parts.filter((p) => p.groupKey === "Drawer");
+      const phaseDuration = Math.round(duration / 2);
+
+      if (boxParts.length > 0) {
+        const from = new Map<PartMesh, Vec3>();
+        const to = new Map<PartMesh, Vec3>();
+        for (const p of boxParts) {
+          from.set(p, {
+            x: p.threeMesh.position.x,
+            y: p.threeMesh.position.y,
+            z: p.threeMesh.position.z,
+          });
+          to.set(p, { ...p.assembledPos });
+        }
+        await this.animate(boxParts, from, to, phaseDuration);
+      }
+      if (frontParts.length > 0) {
+        const from = new Map<PartMesh, Vec3>();
+        const to = new Map<PartMesh, Vec3>();
+        for (const p of frontParts) {
+          from.set(p, {
+            x: p.threeMesh.position.x,
+            y: p.threeMesh.position.y,
+            z: p.threeMesh.position.z,
+          });
+          to.set(p, { ...p.assembledPos });
+        }
+        await this.animate(frontParts, from, to, phaseDuration);
+      }
+      return;
+    }
+
+    // Default: animate all parts together
     const fromPositions = new Map<PartMesh, Vec3>();
     const toPositions = new Map<PartMesh, Vec3>();
 
@@ -689,12 +766,19 @@ export class AssemblyGuideController {
 
     const step = this._activeSteps[nextStep];
 
+    // insertAll: reset drawers to exploded before showing (so they all slide in together)
+    if (step.drawerMode === "insertAll") {
+      this.applyExplodedToDrawerPartsOnly();
+    }
+
     this.applyHighlightDim(step);
     this.applyVisibility(step.prefixes, {
+      drawerMode: step.drawerMode,
       currentPartNames:
         step.drawerMode === "assembleFirst"
           ? new Set(this.getPartsForStep(step).map((p) => p.name))
           : undefined,
+      currentStepIndex: nextStep,
     });
 
     await this.animateAssembleStep(step);
@@ -702,7 +786,15 @@ export class AssemblyGuideController {
     this.markStepAssembled(step);
 
     this.clearHighlight();
-    this.applyVisibility([]);
+    // Keep current step visible (don't hide drawers after their steps)
+    this.applyVisibility(step.prefixes, {
+      drawerMode: step.drawerMode,
+      currentPartNames:
+        step.drawerMode === "assembleFirst"
+          ? new Set(this.getPartsForStep(step).map((p) => p.name))
+          : undefined,
+      currentStepIndex: nextStep,
+    });
     this.renderViewer();
   }
 
@@ -739,10 +831,12 @@ export class AssemblyGuideController {
     this._currentStep = targetStep;
     const targetStepData = this._activeSteps[targetStep];
     this.applyVisibility(targetStepData.prefixes, {
+      drawerMode: targetStepData.drawerMode,
       currentPartNames:
         targetStepData.drawerMode === "assembleFirst"
           ? new Set(this.getPartsForStep(targetStepData).map((p) => p.name))
           : undefined,
+      currentStepIndex: targetStep,
     });
     this.renderViewer();
     this.notifyListeners();
