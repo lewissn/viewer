@@ -42,6 +42,14 @@ export function getEffectiveGroupKey(c: Classification): string {
   return c.subtype ? `${c.groupKey} - ${c.subtype}` : c.groupKey;
 }
 
+/** Drawer index from part name, e.g. "Left Side UM-D [2]_1" -> "[2]_1" */
+const DRAWER_INDEX_RE = /\[\d+\]_\d+/;
+
+export function extractDrawerIndex(name: string): string | undefined {
+  const m = name.match(DRAWER_INDEX_RE);
+  return m ? m[0] : undefined;
+}
+
 /**
  * Classify a part name into a group key + optional subtype.
  * Rules are evaluated in priority order to prevent collisions
@@ -156,6 +164,7 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
 export interface GeneratedStep {
   groupKeys: string[];
   copy: string;
+  drawerMode?: "assembleFirst" | "insertAll";
 }
 
 export interface GeneratedGuide {
@@ -194,7 +203,11 @@ export function generateGuideFromParts(
   };
 
   return {
-    steps: steps.map((s) => ({ groupKeys: s.groupKeys, copy: s.copy })),
+    steps: steps.map((s) => ({
+      groupKeys: s.groupKeys,
+      copy: s.copy,
+      drawerMode: s.drawerMode,
+    })),
     explodeOffsets,
     detectedGroups,
   };

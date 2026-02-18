@@ -10,6 +10,8 @@ export interface AssemblyStep {
   prefixes: string[];
   /** One-sentence instruction shown to the user */
   copy: string;
+  /** Drawer-specific behaviour: assembleFirst = show one drawer only; insertAll = show all drawers */
+  drawerMode?: "assembleFirst" | "insertAll";
 }
 
 export interface ExplodeConfig {
