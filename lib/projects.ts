@@ -1,3 +1,5 @@
+import type { ResolvedFitting } from "./fittings";
+
 /**
  * Project & Cabinet Instance types for customer assembly guides.
  */
@@ -22,6 +24,8 @@ export interface CabinetInstance {
   erpCsvUrl?: string;
   /** Part names from ERP for this cabinet instance */
   erpParts: string[];
+  /** Resolved fittings with quantities from ERP */
+  erpFittings?: ResolvedFitting[];
   /** Optional per-cabinet guide overrides from admin */
   guideOverrides?: GuideOverrides;
 }

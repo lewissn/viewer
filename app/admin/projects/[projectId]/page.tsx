@@ -76,11 +76,13 @@ export default function ProjectEditorPage() {
         setTimeout(() => setSaveMsg(""), 5000);
       }
 
-      // Update the cabinet's erpParts
+      // Update the cabinet's erpParts and erpFittings
       setProject({
         ...project,
         cabinets: project.cabinets.map((c) =>
-          c.cabinetId === cabinetId ? { ...c, erpParts: data.parts } : c
+          c.cabinetId === cabinetId
+            ? { ...c, erpParts: data.parts, erpFittings: data.fittings ?? [] }
+            : c
         ),
       });
     } catch {
@@ -317,7 +319,7 @@ export default function ProjectEditorPage() {
                       </h3>
                       <p className="text-[12px] text-[#86868b]">
                         {cab.erpParts.length} parts &middot; {groups.length}{" "}
-                        groups
+                        groups &middot; {cab.erpFittings?.length ?? 0} fittings
                       </p>
                     </div>
                     <button
@@ -409,6 +411,31 @@ export default function ProjectEditorPage() {
                             </li>
                           );
                         })}
+                      </ul>
+                    </details>
+                  )}
+
+                  {/* Fittings list (collapsed) */}
+                  {cab.erpFittings && cab.erpFittings.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-[12px] text-[#0071e3] cursor-pointer hover:underline">
+                        Show {cab.erpFittings.length} fittings
+                      </summary>
+                      <ul className="mt-2 space-y-0.5">
+                        {cab.erpFittings.map((f) => (
+                          <li
+                            key={f.partId}
+                            className="text-[12px] text-[#424245] flex items-center gap-2"
+                          >
+                            <span>{f.label}</span>
+                            <span className="text-[#86868b]">
+                              x{Math.ceil(f.qty)}
+                            </span>
+                            <span className="text-[10px] text-[#86868b] rounded bg-[#f5f5f7] px-1">
+                              {f.category}
+                            </span>
+                          </li>
+                        ))}
                       </ul>
                     </details>
                   )}

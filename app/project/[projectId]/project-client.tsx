@@ -169,14 +169,14 @@ export default function ProjectClient({ project }: Props) {
   return (
     <div className="flex w-screen h-screen bg-[#fafafa] overflow-hidden">
       {/* Desktop sidebar */}
-      <DesktopSidebar sections={navSections} />
+      <DesktopSidebar sections={navSections} fittings={activeCabinet?.erpFittings} />
 
       {/* Main viewer area */}
       <div className="relative flex-1 h-screen overflow-hidden">
         {/* Top bar */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-2">
-            <MobileNav sections={navSections} />
+            <MobileNav sections={navSections} fittings={activeCabinet?.erpFittings} />
             <div className="backdrop-blur-xl bg-white/70 rounded-xl px-4 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.08)] flex items-center">
               <Image
                 src="/logo.png"
