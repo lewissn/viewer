@@ -170,7 +170,6 @@ export function buildProjectNavigation(
     }));
 
   return [
-    NAVIGATION[0], // Fittings Guide
     {
       title: "This Project",
       items:
@@ -178,6 +177,7 @@ export function buildProjectNavigation(
           ? cabinetItems
           : [{ type: "link" as const, label: "No cabinets configured", href: "#" }],
     },
+    NAVIGATION[0], // Fittings Guide
     NAVIGATION[2], // Need Help
   ];
 }

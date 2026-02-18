@@ -1,8 +1,30 @@
 @import "tailwindcss";
 
-:root {
-  --background: #fafafa;
+/* Light theme — warm, soft */
+:root,
+.light {
+  --background: #f8f6f3;
   --foreground: #1d1d1f;
+  --sidebar-bg: rgba(255, 255, 255, 0.92);
+  --sidebar-border: #e8e6e3;
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --muted: #6b6b6d;
+  --accent: #0071e3;
+  --accent-warm: #c45a2a;
+  --viewer-bg: #f0eeeb;
+}
+
+/* Dark theme — better contrast for white cabinets */
+.dark {
+  --background: #1a1a1c;
+  --foreground: #f5f5f7;
+  --sidebar-bg: rgba(38, 38, 40, 0.95);
+  --sidebar-border: #3a3a3c;
+  --card-bg: rgba(38, 38, 40, 0.95);
+  --muted: #a1a1a6;
+  --accent: #0a84ff;
+  --accent-warm: #e07040;
+  --viewer-bg: #2c2c2e;
 }
 
 @theme inline {

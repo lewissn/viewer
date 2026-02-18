@@ -59,11 +59,11 @@ function FittingCategory({
     <div>
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center w-full gap-2 rounded-lg px-3 py-2 text-[14px] text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+        className="flex items-center w-full gap-2 rounded-lg px-3 py-2 text-[14px] text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
         style={{ paddingLeft: 12 }}
       >
         <svg
-          className={`w-3.5 h-3.5 text-[#86868b] transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+          className={`w-3.5 h-3.5 text-[var(--muted)] transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -76,7 +76,7 @@ function FittingCategory({
           />
         </svg>
         <span className="font-medium">{label}</span>
-        <span className="ml-auto text-[12px] text-[#86868b]">
+        <span className="ml-auto text-[12px] text-[var(--muted)]">
           {items.length}
         </span>
       </button>
@@ -87,13 +87,13 @@ function FittingCategory({
             <li key={item.partId}>
               <button
                 onClick={() => onSelect(item)}
-                className="flex items-center w-full gap-2 rounded-lg px-3 py-1.5 text-[13px] text-[#424245] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+                className="flex items-center w-full gap-2 rounded-lg px-3 py-1.5 text-[13px] text-[var(--muted)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
                 style={{ paddingLeft: 28 }}
               >
                 <span className="flex-1 text-left truncate">
                   {item.label}
                 </span>
-                <span className="shrink-0 text-[12px] text-[#86868b] tabular-nums">
+                <span className="shrink-0 text-[12px] text-[var(--muted)] tabular-nums">
                   x{Math.ceil(item.qty)}
                 </span>
               </button>
@@ -120,14 +120,14 @@ function FittingModal({
       }}
     >
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+      <div className="relative bg-[var(--card-bg)] rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in border border-[var(--sidebar-border)]/50">
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[#f5f5f7] transition-colors active:scale-95"
+          className="absolute top-4 right-4 flex items-center justify-center w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-95"
         >
           <svg
-            className="w-4 h-4 text-[#86868b]"
+            className="w-4 h-4 text-[var(--muted)]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -142,29 +142,29 @@ function FittingModal({
         </button>
 
         {/* Category badge */}
-        <span className="inline-block rounded-md bg-[#f5f5f7] px-2 py-0.5 text-[11px] text-[#86868b] font-medium uppercase tracking-wider mb-3">
+        <span className="inline-block rounded-md bg-black/5 dark:bg-white/10 px-2 py-0.5 text-[11px] text-[var(--muted)] font-medium uppercase tracking-wider mb-3">
           {fitting.category}
         </span>
 
         {/* Title */}
-        <h3 className="text-[18px] font-semibold text-[#1d1d1f] mb-1">
+        <h3 className="text-[18px] font-semibold text-[var(--foreground)] mb-1">
           {fitting.label}
         </h3>
 
         {/* Quantity */}
-        <p className="text-[14px] text-[#0071e3] font-medium mb-4">
+        <p className="text-[14px] text-[var(--accent)] font-medium mb-4">
           Quantity included: {Math.ceil(fitting.qty)}
         </p>
 
         {/* Description */}
-        <p className="text-[14px] text-[#424245] leading-relaxed">
+        <p className="text-[14px] text-[var(--muted)] leading-relaxed">
           {fitting.description}
         </p>
 
         {/* Done button */}
         <button
           onClick={onClose}
-          className="mt-6 w-full rounded-xl bg-[#f5f5f7] px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#e8e8ed] transition-all active:scale-[0.98]"
+          className="mt-6 w-full rounded-xl bg-black/5 dark:bg-white/10 px-4 py-2.5 text-[14px] font-medium text-[var(--foreground)] hover:opacity-90 transition-all active:scale-[0.98]"
         >
           Done
         </button>

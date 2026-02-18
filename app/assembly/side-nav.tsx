@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   NAVIGATION,
   type NavItem,
@@ -9,27 +11,75 @@ import {
 } from "@/lib/navigation";
 import type { ResolvedFitting } from "@/lib/fittings";
 import { FittingsPanel } from "./fittings-panel";
+import { useTheme } from "@/lib/theme-context";
 
 interface SideNavProps {
   /** Override default navigation sections (e.g. for project context) */
   sections?: NavSection[];
   /** Resolved fittings for the current cabinet (replaces Fittings Guide) */
   fittings?: ResolvedFitting[];
+  /** Active cabinet/link ID for highlighting (e.g. cabinetId) */
+  activeId?: string | null;
 }
 
 // ── Desktop sidebar (rendered in the flex root) ──
 
-export function DesktopSidebar({ sections, fittings }: SideNavProps = {}) {
+export function DesktopSidebar({
+  sections,
+  fittings,
+  activeId,
+}: SideNavProps = {}) {
   return (
-    <aside className="hidden lg:flex flex-col w-[280px] h-screen flex-shrink-0 bg-white/80 backdrop-blur-xl border-r border-[#e5e5ea] overflow-y-auto">
-      <NavContent sections={sections} fittings={fittings} />
+    <aside className="hidden lg:flex flex-col w-[280px] h-screen flex-shrink-0 bg-[var(--sidebar-bg)] backdrop-blur-xl border-r border-[var(--sidebar-border)] overflow-y-auto transition-colors">
+      <SidebarHeader />
+      <NavContent
+        sections={sections}
+        fittings={fittings}
+        activeId={activeId}
+      />
     </aside>
+  );
+}
+
+// ── Sidebar header (logo + Assembly Guide + theme toggle) ──
+
+function SidebarHeader() {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <div className="flex-shrink-0 px-4 pt-5 pb-4 border-b border-[var(--sidebar-border)]">
+      <div className="flex items-center gap-3">
+        <Image
+          src="/logo.png"
+          alt="The Cabinet Shop"
+          width={100}
+          height={28}
+          className="h-6 w-auto"
+          priority
+        />
+        <span className="text-[12px] font-medium text-[var(--muted)]">
+          Assembly Guide
+        </span>
+      </div>
+      <button
+        onClick={toggleTheme}
+        aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+        className="mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-[var(--muted)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+      >
+        {theme === "light" ? <SunIcon /> : <MoonIcon />}
+        {theme === "light" ? "Dark mode" : "Light mode"}
+      </button>
+    </div>
   );
 }
 
 // ── Mobile hamburger + drawer (rendered in the top bar) ──
 
-export function MobileNav({ sections, fittings }: SideNavProps = {}) {
+export function MobileNav({
+  sections,
+  fittings,
+  activeId,
+}: SideNavProps = {}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -59,7 +109,7 @@ export function MobileNav({ sections, fittings }: SideNavProps = {}) {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open navigation menu"
-        className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-xl bg-white/70 shadow-[0_1px_8px_rgba(0,0,0,0.08)] hover:bg-white/90 transition-all active:scale-95"
+        className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-xl bg-[var(--card-bg)] shadow-[0_1px_8px_rgba(0,0,0,0.08)] hover:opacity-90 transition-all active:scale-95"
       >
         <HamburgerIcon />
       </button>
@@ -70,20 +120,25 @@ export function MobileNav({ sections, fittings }: SideNavProps = {}) {
             className="absolute inset-0 bg-black/30 backdrop-blur-sm"
             onClick={close}
           />
-          <div className="relative w-[300px] max-w-[85vw] h-full bg-white/95 backdrop-blur-xl shadow-2xl overflow-y-auto animate-slide-in">
-            <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <span className="text-[13px] font-semibold text-[#86868b] uppercase tracking-wider">
-                Menu
-              </span>
+          <div className="relative w-[300px] max-w-[85vw] h-full bg-[var(--sidebar-bg)] backdrop-blur-xl shadow-2xl overflow-y-auto animate-slide-in">
+            <div className="sticky top-0 z-10 bg-[var(--sidebar-bg)] border-b border-[var(--sidebar-border)] pr-12">
+              <SidebarHeader />
               <button
                 onClick={close}
                 aria-label="Close menu"
-                className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[#f5f5f7] transition-colors active:scale-95"
+                className="absolute top-4 right-4 flex items-center justify-center w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
               >
                 <CloseIcon />
               </button>
             </div>
-            <NavContent sections={sections} fittings={fittings} onNavigate={close} />
+            <div className="px-4 pt-2">
+              <NavContent
+                sections={sections}
+                fittings={fittings}
+                activeId={activeId}
+                onNavigate={close}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -96,56 +151,56 @@ export function MobileNav({ sections, fittings }: SideNavProps = {}) {
 function NavContent({
   sections,
   fittings,
+  activeId,
   onNavigate,
 }: {
   sections?: NavSection[];
   fittings?: ResolvedFitting[];
+  activeId?: string | null;
   onNavigate?: () => void;
 }) {
   const navSections = sections ?? NAVIGATION;
-
-  // When fittings are provided, replace the "Fittings Guide" section
   const hasFittings = fittings && fittings.length > 0;
 
   return (
-    <nav className="flex flex-col gap-1 px-3 py-4">
-      {hasFittings ? (
-        <div className="mb-3">
-          <h3 className="px-3 pb-1 text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
-            Included Fittings
-          </h3>
-          <FittingsPanel fittings={fittings} />
-        </div>
-      ) : (
-        navSections[0] && (
+    <nav className="flex flex-col gap-1 py-4">
+      {navSections.map((section) => {
+        // Replace Fittings Guide with Included Fittings when fittings provided
+        if (section.title === "Fittings Guide" && hasFittings) {
+          return (
+            <div key="Included Fittings" className="mb-3">
+              <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
+                Included Fittings
+              </h3>
+              <FittingsPanel fittings={fittings!} />
+            </div>
+          );
+        }
+        return (
           <SectionBlock
-            key={navSections[0].title}
-            section={navSections[0]}
+            key={section.title}
+            section={section}
+            activeId={activeId}
             onNavigate={onNavigate}
           />
-        )
-      )}
-      {navSections.slice(1).map((section) => (
-        <SectionBlock
-          key={section.title}
-          section={section}
-          onNavigate={onNavigate}
-        />
-      ))}
+        );
+      })}
     </nav>
   );
 }
 
 function SectionBlock({
   section,
+  activeId,
   onNavigate,
 }: {
   section: NavSection;
+  activeId?: string | null;
   onNavigate?: () => void;
 }) {
   return (
     <div className="mb-3">
-      <h3 className="px-3 pb-1 text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
+      <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
         {section.title}
       </h3>
       <ul className="flex flex-col">
@@ -154,6 +209,7 @@ function SectionBlock({
             key={item.label}
             item={item}
             depth={0}
+            activeId={activeId}
             onNavigate={onNavigate}
           />
         ))}
@@ -167,21 +223,32 @@ function SectionBlock({
 function NavItemRow({
   item,
   depth,
+  activeId,
   onNavigate,
 }: {
   item: NavItem;
   depth: number;
+  activeId?: string | null;
   onNavigate?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const paddingLeft = 12 + depth * 16;
+
+  const isLinkActive = (href: string) => {
+    if (activeId && href.includes(`cabinet=${activeId}`)) return true;
+    const hrefPath = href.split("?")[0];
+    if (pathname && hrefPath === pathname) return true;
+    return false;
+  };
 
   if (item.type === "group") {
     return (
       <li>
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="flex items-center w-full gap-2 rounded-lg px-3 py-2 text-[14px] text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+          className="flex items-center w-full gap-2 rounded-lg px-3 py-2 text-[14px] text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
           style={{ paddingLeft }}
         >
           <ChevronIcon expanded={expanded} />
@@ -194,6 +261,7 @@ function NavItemRow({
                 key={child.label}
                 item={child}
                 depth={depth + 1}
+                activeId={activeId}
                 onNavigate={onNavigate}
               />
             ))}
@@ -211,7 +279,7 @@ function NavItemRow({
           target="_blank"
           rel="noopener noreferrer"
           onClick={onNavigate}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
           style={{ paddingLeft }}
         >
           <PdfIcon />
@@ -230,7 +298,7 @@ function NavItemRow({
           target="_blank"
           rel="noopener noreferrer"
           onClick={onNavigate}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
           style={{ paddingLeft }}
         >
           <span>{item.label}</span>
@@ -240,12 +308,18 @@ function NavItemRow({
     );
   }
 
+  const active = isLinkActive(item.href);
+
   return (
     <li>
       <Link
         href={item.href}
         onClick={onNavigate}
-        className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors active:scale-[0.98]"
+        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] transition-colors active:scale-[0.98] ${
+          active
+            ? "bg-[var(--accent)]/10 text-[var(--accent)] font-medium"
+            : "text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10"
+        }`}
         style={{ paddingLeft }}
       >
         <span>{item.label}</span>
@@ -259,7 +333,7 @@ function NavItemRow({
 function HamburgerIcon() {
   return (
     <svg
-      className="w-[18px] h-[18px] text-[#1d1d1f]"
+      className="w-[18px] h-[18px] text-[var(--foreground)]"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -277,7 +351,7 @@ function HamburgerIcon() {
 function CloseIcon() {
   return (
     <svg
-      className="w-4 h-4 text-[#86868b]"
+      className="w-4 h-4 text-[var(--muted)]"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -295,7 +369,7 @@ function CloseIcon() {
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
-      className={`w-3.5 h-3.5 text-[#86868b] transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+      className={`w-3.5 h-3.5 text-[var(--muted)] transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -313,7 +387,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 function PdfIcon() {
   return (
     <svg
-      className="w-4 h-4 text-[#86868b] flex-shrink-0"
+      className="w-4 h-4 text-[var(--muted)] flex-shrink-0"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -331,7 +405,7 @@ function PdfIcon() {
 function ExternalIcon() {
   return (
     <svg
-      className="w-3 h-3 text-[#86868b] flex-shrink-0 ml-auto"
+      className="w-3 h-3 text-[var(--muted)] flex-shrink-0 ml-auto"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -342,6 +416,22 @@ function ExternalIcon() {
         strokeLinejoin="round"
         d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5-6h6m0 0v6m0-6L9.75 14.25"
       />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
     </svg>
   );
 }
