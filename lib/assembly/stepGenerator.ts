@@ -20,6 +20,8 @@ export interface CabinetFlags {
 export interface AssemblyStepBlock {
   groupKeys: GroupKey[];
   copy: string;
+  /** assembleFirst = show one drawer only; insertAll = show all drawers sliding in */
+  drawerMode?: "assembleFirst" | "insertAll";
 }
 
 /**
@@ -73,16 +75,47 @@ export function generateSteps(
 
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
 
+  // Helper: add step with optional drawerMode
+  function addStepWithMeta(
+    keys: GroupKey[],
+    copy: string,
+    meta?: { drawerMode: "assembleFirst" | "insertAll" }
+  ) {
+    const present = keys.filter((k) => has(k));
+    if (present.length > 0) {
+      steps.push({
+        groupKeys: present,
+        copy,
+        drawerMode: meta?.drawerMode,
+      });
+    }
+  }
+
+  // ── DRAWER ASSEMBLY (first — get it out of the way) ──
+  if (drawerKeys.length > 0) {
+    addStepWithMeta(
+      drawerKeys,
+      "Assemble this drawer first. Repeat for any other drawers in the same way.",
+      { drawerMode: "assembleFirst" }
+    );
+  }
+
   // ── Base step (Bottom + Plinth) ──
-  // If bottomOverlaysSides: defer to after sides
   if (!bottomOverlaysSides && (hasBottom || hasPlinth)) {
     addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.");
   }
 
-  // ── Divider + Top (Vertical Divider is synonym for Vertical Division) ──
+  // ── Divider + Top + Face Frame Top/Divider (attach face frames with their panels) ──
+  const dividerTopKeys: GroupKey[] = ["Vertical Division", "Top"];
+  if (has("Face Frame - Top")) dividerTopKeys.push("Face Frame - Top");
+  if (has("Face Frame - Divider")) dividerTopKeys.push("Face Frame - Divider");
+  if (has("Face Frame") && faceFrameKeys.length === 0)
+    dividerTopKeys.push("Face Frame");
   addStep(
-    ["Vertical Division", "Top"],
-    "Fit the divider and top panel."
+    dividerTopKeys,
+    dividerTopKeys.some((k) => k.startsWith("Face Frame"))
+      ? "Fit the divider and top panel, with their face frame pieces attached."
+      : "Fit the divider and top panel."
   );
 
   // ── Fixed shelves (MUST be before sides) ──
@@ -93,16 +126,16 @@ export function generateSteps(
     );
   }
 
-  // ── Face frames (early, before back/doors for cam access) ──
-  if (faceFrameKeys.length > 0) {
-    addStep(
-      faceFrameKeys,
-      "Attach the face frame panels while fixings remain accessible."
-    );
-  }
-
-  // ── Sides ──
-  addStep(["Left Side", "Right Side"], "Attach the left and right sides.");
+  // ── Sides + Face Frame Left/Right (attach face frames with their panels) ──
+  const sidesKeys: GroupKey[] = ["Left Side", "Right Side"];
+  if (has("Face Frame - Left")) sidesKeys.push("Face Frame - Left");
+  if (has("Face Frame - Right")) sidesKeys.push("Face Frame - Right");
+  addStep(
+    sidesKeys,
+    sidesKeys.some((k) => k.startsWith("Face Frame"))
+      ? "Attach the left and right sides, with their face frame pieces attached."
+      : "Attach the left and right sides."
+  );
 
   // ── Overlay bottom (AFTER sides when flag set) ──
   if (bottomOverlaysSides && (hasBottom || hasPlinth)) {
@@ -123,11 +156,12 @@ export function generateSteps(
   // ── Doors ──
   addStep(["Door"], "Fit the doors to the carcass.");
 
-  // ── Drawers (separate step, after carcass) ──
+  // ── DRAWER INSERT (drawers slide in at end; they were hidden during carcass) ──
   if (drawerKeys.length > 0) {
-    addStep(
+    addStepWithMeta(
       drawerKeys,
-      "Assemble the drawers, then slide them into the cabinet."
+      "Slide each assembled drawer into its opening in the cabinet.",
+      { drawerMode: "insertAll" }
     );
   }
 

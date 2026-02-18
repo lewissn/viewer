@@ -14,7 +14,11 @@
  */
 
 import type { AssemblyGuide, AssemblyStep } from "./assemblyGuides";
-import { classifyPart, generateGuideFromParts } from "./classifyPart";
+import {
+  classifyPart,
+  extractDrawerIndex,
+  generateGuideFromParts,
+} from "./classifyPart";
 import type { GuideOverrides } from "./projects";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -36,6 +40,15 @@ interface Vec3 {
   z: number;
 }
 
+/** Drawer group keys for visibility logic */
+const DRAWER_GROUP_KEYS = new Set([
+  "Drawer Box - Left",
+  "Drawer Box - Right",
+  "Drawer Box - Back",
+  "Drawer Box - Bottom",
+  "Drawer",
+]);
+
 /** A THREE.Mesh with its metadata */
 interface PartMesh {
   threeMesh: any; // THREE.Mesh
@@ -43,6 +56,8 @@ interface PartMesh {
   groupKey: string; // classification group
   assembledPos: Vec3; // original local position at load
   explodedPos: Vec3; // computed exploded local position
+  /** Drawer index e.g. "[2]_1" for drawer box parts */
+  drawerIndex?: string;
 }
 
 export interface ControllerState {
@@ -96,6 +111,8 @@ export class AssemblyGuideController {
   private _dynamicMode = false;
   // Step groupKeys for dynamic mode (each step maps to an array of groupKeys)
   private _stepGroupKeys: string[][] = [];
+  // Drawer mode per step (assembleFirst | insertAll | undefined)
+  private _stepDrawerModes: (string | undefined)[] = [];
 
   // State
   private _currentStep = -1; // -1 = intro
@@ -182,9 +199,9 @@ export class AssemblyGuideController {
     this.computeExplodedPositionsDynamic(generated.explodeOffsets);
 
     // Convert generated steps to AssemblyStep format
-    // In dynamic mode, "prefixes" are actually groupKeys
     this._activeSteps = [];
     this._stepGroupKeys = [];
+    this._stepDrawerModes = [];
 
     for (const step of generated.steps) {
       // Only include if group has parts
@@ -194,10 +211,12 @@ export class AssemblyGuideController {
       if (!hasParts) continue;
 
       this._activeSteps.push({
-        prefixes: step.groupKeys, // reuse prefixes field for groupKeys
+        prefixes: step.groupKeys,
         copy: step.copy,
+        drawerMode: step.drawerMode,
       });
       this._stepGroupKeys.push(step.groupKeys);
+      this._stepDrawerModes.push(step.drawerMode);
     }
 
     console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
@@ -234,6 +253,9 @@ export class AssemblyGuideController {
         if (!name) return;
 
         const { groupKey } = classifyPart(name);
+        const drawerIndex = DRAWER_GROUP_KEYS.has(groupKey)
+          ? extractDrawerIndex(name)
+          : undefined;
 
         this.allParts.push({
           threeMesh: obj,
@@ -245,6 +267,7 @@ export class AssemblyGuideController {
             z: obj.position.z,
           },
           explodedPos: { x: 0, y: 0, z: 0 },
+          drawerIndex,
         });
       });
 
@@ -379,14 +402,57 @@ export class AssemblyGuideController {
 
   // ── Part lookup ──
 
+  /** First drawer index from drawer box parts (e.g. "[2]_1") */
+  private getFirstDrawerIndex(): string | undefined {
+    const indices = new Set<string>();
+    for (const part of this.allParts) {
+      if (part.drawerIndex) indices.add(part.drawerIndex);
+    }
+    const sorted = Array.from(indices).sort();
+    return sorted[0];
+  }
+
   private getPartsForStep(step: AssemblyStep): PartMesh[] {
     if (this._dynamicMode) {
-      // In dynamic mode, step.prefixes contains groupKeys
-      const parts: PartMesh[] = [];
+      let parts: PartMesh[] = [];
       for (const key of step.prefixes) {
         const group = this.partGroups.get(key);
         if (group) parts.push(...group);
       }
+
+      // Drawer assembleFirst: show only first drawer's box parts + spatially matched front
+      if (step.drawerMode === "assembleFirst") {
+        const firstIdx = this.getFirstDrawerIndex();
+        if (firstIdx) {
+          parts = parts.filter((p) => p.drawerIndex === firstIdx);
+          // Add drawer front closest to first drawer centroid (spatial matching)
+          if (parts.length > 0) {
+            const cx =
+              parts.reduce((s, p) => s + p.assembledPos.x, 0) / parts.length;
+            const cy =
+              parts.reduce((s, p) => s + p.assembledPos.y, 0) / parts.length;
+            const cz =
+              parts.reduce((s, p) => s + p.assembledPos.z, 0) / parts.length;
+            const fronts = this.allParts.filter((p) => p.groupKey === "Drawer");
+            if (fronts.length > 0) {
+              let best = fronts[0];
+              let bestD = Infinity;
+              for (const f of fronts) {
+                const d =
+                  Math.pow(f.assembledPos.x - cx, 2) +
+                  Math.pow(f.assembledPos.y - cy, 2) +
+                  Math.pow(f.assembledPos.z - cz, 2);
+                if (d < bestD) {
+                  bestD = d;
+                  best = f;
+                }
+              }
+              if (!parts.includes(best)) parts.push(best);
+            }
+          }
+        }
+      }
+
       return parts;
     }
     // Legacy mode: prefix matching
@@ -406,14 +472,20 @@ export class AssemblyGuideController {
       const focusColor = new this.OV.RGBColor(0, 113, 227); // Apple blue
 
       if (this._dynamicMode) {
-        const keys = new Set(step.prefixes); // groupKeys
+        // assembleFirst: highlight only first drawer's parts
+        const highlightNames =
+          step.drawerMode === "assembleFirst"
+            ? new Set(this.getPartsForStep(step).map((p) => p.name))
+            : null;
+
         this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
           if (!userData?.originalMeshInstance) return false;
           const mi = userData.originalMeshInstance;
           const name =
             mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+          if (highlightNames) return highlightNames.has(name);
           const { groupKey } = classifyPart(name);
-          return keys.has(groupKey);
+          return step.prefixes.includes(groupKey);
         });
       } else {
         this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
@@ -452,14 +524,26 @@ export class AssemblyGuideController {
   }
 
   /** Apply visibility based on assembled/current step keys */
-  private applyVisibility(currentKeys: string[]) {
+  private applyVisibility(
+    currentKeys: string[],
+    options?: { drawerMode?: string; currentPartNames?: Set<string> }
+  ) {
     const currentSet = new Set(
       this._dynamicMode
         ? currentKeys
         : currentKeys.map(normalizePartName)
     );
+    const isDrawerStep = currentKeys.some((k) => DRAWER_GROUP_KEYS.has(k));
 
     for (const part of this.allParts) {
+      const isDrawerPart = DRAWER_GROUP_KEYS.has(part.groupKey);
+
+      // Hide drawer parts when not on a drawer step
+      if (isDrawerPart && !isDrawerStep) {
+        this.setPartVisible(part, false);
+        continue;
+      }
+
       const partKey = this._dynamicMode
         ? part.groupKey
         : normalizePartName(part.name);
@@ -473,10 +557,14 @@ export class AssemblyGuideController {
       }
 
       let isCurrent = false;
-      for (const key of currentSet) {
-        if (this._dynamicMode ? partKey === key : partKey.startsWith(key)) {
-          isCurrent = true;
-          break;
+      if (options?.currentPartNames?.has(part.name)) {
+        isCurrent = true;
+      } else {
+        for (const key of currentSet) {
+          if (this._dynamicMode ? partKey === key : partKey.startsWith(key)) {
+            isCurrent = true;
+            break;
+          }
         }
       }
 
@@ -602,7 +690,12 @@ export class AssemblyGuideController {
     const step = this._activeSteps[nextStep];
 
     this.applyHighlightDim(step);
-    this.applyVisibility(step.prefixes);
+    this.applyVisibility(step.prefixes, {
+      currentPartNames:
+        step.drawerMode === "assembleFirst"
+          ? new Set(this.getPartsForStep(step).map((p) => p.name))
+          : undefined,
+    });
 
     await this.animateAssembleStep(step);
 
@@ -644,7 +737,13 @@ export class AssemblyGuideController {
     }
 
     this._currentStep = targetStep;
-    this.applyVisibility([]);
+    const targetStepData = this._activeSteps[targetStep];
+    this.applyVisibility(targetStepData.prefixes, {
+      currentPartNames:
+        targetStepData.drawerMode === "assembleFirst"
+          ? new Set(this.getPartsForStep(targetStepData).map((p) => p.name))
+          : undefined,
+    });
     this.renderViewer();
     this.notifyListeners();
   }
