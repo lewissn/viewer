@@ -7,25 +7,29 @@ import {
   type NavItem,
   type NavSection,
 } from "@/lib/navigation";
+import type { ResolvedFitting } from "@/lib/fittings";
+import { FittingsPanel } from "./fittings-panel";
 
 interface SideNavProps {
   /** Override default navigation sections (e.g. for project context) */
   sections?: NavSection[];
+  /** Resolved fittings for the current cabinet (replaces Fittings Guide) */
+  fittings?: ResolvedFitting[];
 }
 
 // ── Desktop sidebar (rendered in the flex root) ──
 
-export function DesktopSidebar({ sections }: SideNavProps = {}) {
+export function DesktopSidebar({ sections, fittings }: SideNavProps = {}) {
   return (
     <aside className="hidden lg:flex flex-col w-[280px] h-screen flex-shrink-0 bg-white/80 backdrop-blur-xl border-r border-[#e5e5ea] overflow-y-auto">
-      <NavContent sections={sections} />
+      <NavContent sections={sections} fittings={fittings} />
     </aside>
   );
 }
 
 // ── Mobile hamburger + drawer (rendered in the top bar) ──
 
-export function MobileNav({ sections }: SideNavProps = {}) {
+export function MobileNav({ sections, fittings }: SideNavProps = {}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -79,7 +83,7 @@ export function MobileNav({ sections }: SideNavProps = {}) {
                 <CloseIcon />
               </button>
             </div>
-            <NavContent sections={sections} onNavigate={close} />
+            <NavContent sections={sections} fittings={fittings} onNavigate={close} />
           </div>
         </div>
       )}
@@ -91,15 +95,37 @@ export function MobileNav({ sections }: SideNavProps = {}) {
 
 function NavContent({
   sections,
+  fittings,
   onNavigate,
 }: {
   sections?: NavSection[];
+  fittings?: ResolvedFitting[];
   onNavigate?: () => void;
 }) {
   const navSections = sections ?? NAVIGATION;
+
+  // When fittings are provided, replace the "Fittings Guide" section
+  const hasFittings = fittings && fittings.length > 0;
+
   return (
     <nav className="flex flex-col gap-1 px-3 py-4">
-      {navSections.map((section) => (
+      {hasFittings ? (
+        <div className="mb-3">
+          <h3 className="px-3 pb-1 text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
+            Included Fittings
+          </h3>
+          <FittingsPanel fittings={fittings} />
+        </div>
+      ) : (
+        navSections[0] && (
+          <SectionBlock
+            key={navSections[0].title}
+            section={navSections[0]}
+            onNavigate={onNavigate}
+          />
+        )
+      )}
+      {navSections.slice(1).map((section) => (
         <SectionBlock
           key={section.title}
           section={section}

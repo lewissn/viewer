@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveFittings, type ResolvedFitting } from "@/lib/fittings";
 
 /**
- * Fetches a CSV file from a remote URL and extracts part names from column 4.
+ * Fetches a CSV file from a remote URL and extracts:
+ *  - Panel/part names from column 4
+ *  - Fittings (name in col1, qty in col2) from rows that lack col4 data
  *
  * POST body: { url: string, column?: number }
- * Returns: { parts: string[], warnings: string[] }
+ * Returns: { parts: string[], fittings: ResolvedFitting[], rawFittings: { name, qty }[], warnings: string[] }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -32,10 +35,10 @@ export async function POST(req: NextRequest) {
 
     const csvText = await csvRes.text();
 
-    // Parse CSV and extract part names from the specified column (1-indexed)
     const colIndex = column - 1; // convert to 0-indexed
     const warnings: string[] = [];
     const parts: string[] = [];
+    const rawFittings: { name: string; qty: number }[] = [];
 
     const lines = csvText
       .split(/\r?\n/)
@@ -43,7 +46,12 @@ export async function POST(req: NextRequest) {
       .filter((l) => l.length > 0);
 
     if (lines.length === 0) {
-      return NextResponse.json({ parts: [], warnings: ["Empty CSV file."] });
+      return NextResponse.json({
+        parts: [],
+        fittings: [] as ResolvedFitting[],
+        rawFittings: [],
+        warnings: ["Empty CSV file."],
+      });
     }
 
     // Skip header row if first row looks like a header
@@ -63,19 +71,34 @@ export async function POST(req: NextRequest) {
 
     for (let i = startIndex; i < lines.length; i++) {
       const fields = parseCSVLine(lines[i]);
-      if (fields.length <= colIndex) {
-        warnings.push(
-          `Line ${i + 1}: expected at least ${column} columns, got ${fields.length}. Skipped.`
-        );
+
+      // Panel row: has data in column 4 (col1=material, col2=length, col3=width, col4=name)
+      if (fields.length > colIndex && fields[colIndex].trim()) {
+        parts.push(fields[colIndex].trim());
         continue;
       }
-      const name = fields[colIndex].trim();
-      if (name) {
-        parts.push(name);
+
+      // Fitting row: col1=name, col2=qty (and col4 is empty/missing)
+      const fittingName = fields[0]?.trim();
+      const fittingQtyStr = fields[1]?.trim();
+      if (fittingName && fittingQtyStr) {
+        const qty = parseFloat(fittingQtyStr);
+        if (!isNaN(qty) && qty > 0) {
+          rawFittings.push({ name: fittingName, qty });
+          continue;
+        }
+      }
+
+      // Row doesn't match either pattern
+      if (fields.some((f) => f.trim())) {
+        warnings.push(`Line ${i + 1}: could not parse as panel or fitting. Skipped.`);
       }
     }
 
-    return NextResponse.json({ parts, warnings });
+    // Resolve fittings via aliases → canonical parts
+    const fittings = resolveFittings(rawFittings);
+
+    return NextResponse.json({ parts, fittings, rawFittings, warnings });
   } catch {
     return NextResponse.json(
       { error: "Invalid request." },
