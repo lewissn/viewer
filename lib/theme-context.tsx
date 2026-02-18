@@ -37,21 +37,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const applyToDocument = useCallback((t: Theme) => {
+    if (typeof document === "undefined") return;
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(t);
+    localStorage.setItem(STORAGE_KEY, t);
+  }, []);
+
   useEffect(() => {
     if (!mounted) return;
-    const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme, mounted]);
+    applyToDocument(theme);
+  }, [theme, mounted, applyToDocument]);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-  }, []);
+    applyToDocument(t);
+  }, [applyToDocument]);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((prev) => (prev === "light" ? "dark" : "light"));
-  }, []);
+    setThemeState((prev) => {
+      const next = prev === "light" ? "dark" : "light";
+      applyToDocument(next);
+      return next;
+    });
+  }, [applyToDocument]);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>

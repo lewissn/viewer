@@ -237,10 +237,11 @@ function NavItemRow({
   const paddingLeft = 12 + depth * 16;
 
   const isLinkActive = (href: string) => {
-    if (activeId && href.includes(`cabinet=${activeId}`)) return true;
+    if (href.includes("cabinet=")) {
+      return activeId != null && href.includes(`cabinet=${activeId}`);
+    }
     const hrefPath = href.split("?")[0];
-    if (pathname && hrefPath === pathname) return true;
-    return false;
+    return pathname != null && hrefPath === pathname;
   };
 
   if (item.type === "group") {
@@ -315,14 +316,14 @@ function NavItemRow({
       <Link
         href={item.href}
         onClick={onNavigate}
-        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] transition-colors active:scale-[0.98] ${
-          active
-            ? "bg-[var(--accent)]/10 text-[var(--accent)] font-medium"
-            : "text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10"
-        }`}
+        className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-[0.98]"
         style={{ paddingLeft }}
       >
-        <span>{item.label}</span>
+        <span
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? "bg-emerald-500" : "bg-transparent"}`}
+          aria-hidden
+        />
+        <span className={active ? "font-medium" : ""}>{item.label}</span>
       </Link>
     </li>
   );
