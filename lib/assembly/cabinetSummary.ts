@@ -109,19 +109,30 @@ export function buildCabinetSummary(
 
   const notes: string[] = [];
 
+  if (overlayBottom) {
+    notes.push(
+      "Upper unit — build flat, front-edge-down. Bottom panel is fitted last."
+    );
+  } else {
+    notes.push(
+      "Build with front edges facing the floor. Stand upright once the back is fitted."
+    );
+  }
+  if (dividerCount > 0) {
+    notes.push(
+      "Dividers form the inner structure and must be connected early."
+    );
+  }
   if (fixedShelfCount > 0) {
     notes.push("Fixed shelves must be installed before side panels.");
   }
   if (hasFaceFrames) {
     notes.push(
-      "Face frames must be fitted before access becomes restricted."
+      "Attach face frames to their panels before connecting the cabinet."
     );
   }
-  if (overlayBottom) {
-    notes.push("Bottom panel is fitted after sides.");
-  }
   if (hasDrawers) {
-    notes.push("Drawer assembly is completed later in this guide.");
+    notes.push("Drawers are assembled first, then inserted after the carcass.");
   }
 
   return { features, estimatedMinutes: minutes, difficulty, notes };
