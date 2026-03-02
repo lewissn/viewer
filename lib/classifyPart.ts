@@ -102,7 +102,7 @@ export function classifyPart(name: string): Classification {
   if (norm.startsWith("filler")) return { groupKey: "Filler" };
 
   // 8) STANDARD CARCASS — longest-match-wins (ordered longest first)
-  // Fixed Shelf before generic Shelf (naming convention for fixed-only)
+  // Fixed Shelf before generic Shelf; Mobile Shelf is a removable shelf variant
   const carcassPrefixes: [string, string][] = [
     ["vertical division", "Vertical Division"],
     ["vertical divider", "Vertical Division"],
@@ -111,6 +111,7 @@ export function classifyPart(name: string): Classification {
     ["right side", "Right Side"],
     ["fixed shelf", "Fixed Shelf"],
     ["fixed shelves", "Fixed Shelf"],
+    ["mobile shelf", "Shelf"],
     ["bottom", "Bottom"],
     ["plinth", "Plinth"],
     ["top", "Top"],
