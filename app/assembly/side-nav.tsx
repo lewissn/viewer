@@ -166,16 +166,23 @@ function NavContent({
   return (
     <nav className="flex flex-col gap-1 py-4">
       {navSections.map((section) => {
-        // Replace Fittings Guide with Included Fittings when fittings provided
-        if (section.title === "Fittings Guide" && hasFittings) {
+        if (section.title === "Fittings Guide") {
           return (
             <div key="fittings-and-installation">
-              <div className="mb-3">
-                <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
-                  Included Fittings
-                </h3>
-                <FittingsPanel fittings={fittings!} />
-              </div>
+              {hasFittings ? (
+                <div className="mb-3">
+                  <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
+                    Included Fittings
+                  </h3>
+                  <FittingsPanel fittings={fittings!} />
+                </div>
+              ) : (
+                <SectionBlock
+                  section={section}
+                  activeId={activeId}
+                  onNavigate={onNavigate}
+                />
+              )}
               <div className="mb-3">
                 <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
                   Installation &amp; Finishing
