@@ -161,10 +161,14 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
 
 // ── Guide generation ──
 
+import type { StepHelper } from "./assemblyGuides";
+
 export interface GeneratedStep {
   groupKeys: string[];
   copy: string;
   drawerMode?: "assembleFirst" | "insertAll";
+  helpers?: StepHelper[];
+  usesFittings?: boolean;
 }
 
 export interface GeneratedGuide {
@@ -207,6 +211,8 @@ export function generateGuideFromParts(
       groupKeys: s.groupKeys,
       copy: s.copy,
       drawerMode: s.drawerMode,
+      helpers: s.helpers,
+      usesFittings: s.usesFittings,
     })),
     explodeOffsets,
     detectedGroups,
