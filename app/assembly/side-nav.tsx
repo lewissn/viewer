@@ -11,6 +11,7 @@ import {
 } from "@/lib/navigation";
 import type { ResolvedFitting } from "@/lib/fittings";
 import { FittingsPanel } from "./fittings-panel";
+import { InstallationPanel } from "./installation-panel";
 import { useTheme } from "@/lib/theme-context";
 
 interface SideNavProps {
@@ -168,11 +169,19 @@ function NavContent({
         // Replace Fittings Guide with Included Fittings when fittings provided
         if (section.title === "Fittings Guide" && hasFittings) {
           return (
-            <div key="Included Fittings" className="mb-3">
-              <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
-                Included Fittings
-              </h3>
-              <FittingsPanel fittings={fittings!} />
+            <div key="fittings-and-installation">
+              <div className="mb-3">
+                <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
+                  Included Fittings
+                </h3>
+                <FittingsPanel fittings={fittings!} />
+              </div>
+              <div className="mb-3">
+                <h3 className="px-3 pb-1 text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
+                  Installation &amp; Finishing
+                </h3>
+                <InstallationPanel fittings={fittings} />
+              </div>
             </div>
           );
         }
