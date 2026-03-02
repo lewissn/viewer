@@ -10,6 +10,8 @@
  * - Drawers: separate step, not in carcass
  */
 
+import type { StepHelper } from "../assemblyGuides";
+
 export type GroupKey = string;
 
 export interface CabinetFlags {
@@ -22,6 +24,10 @@ export interface AssemblyStepBlock {
   copy: string;
   /** assembleFirst = show one drawer only; insertAll = show all drawers sliding in */
   drawerMode?: "assembleFirst" | "insertAll";
+  /** Optional expandable helper blocks */
+  helpers?: StepHelper[];
+  /** Step uses fittings from the sidebar */
+  usesFittings?: boolean;
 }
 
 /**
@@ -36,10 +42,19 @@ export function generateSteps(
   const steps: AssemblyStepBlock[] = [];
 
   // Helper: add step only if any of its groups exist
-  function addStep(keys: GroupKey[], copy: string) {
+  function addStep(
+    keys: GroupKey[],
+    copy: string,
+    meta?: { helpers?: StepHelper[]; usesFittings?: boolean }
+  ) {
     const present = keys.filter((k) => has(k));
     if (present.length > 0) {
-      steps.push({ groupKeys: present, copy });
+      steps.push({
+        groupKeys: present,
+        copy,
+        helpers: meta?.helpers,
+        usesFittings: meta?.usesFittings,
+      });
     }
   }
 
@@ -75,11 +90,15 @@ export function generateSteps(
 
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
 
-  // Helper: add step with optional drawerMode
+  // Helper: add step with optional meta
   function addStepWithMeta(
     keys: GroupKey[],
     copy: string,
-    meta?: { drawerMode: "assembleFirst" | "insertAll" }
+    meta?: {
+      drawerMode?: "assembleFirst" | "insertAll";
+      helpers?: StepHelper[];
+      usesFittings?: boolean;
+    }
   ) {
     const present = keys.filter((k) => has(k));
     if (present.length > 0) {
@@ -87,6 +106,8 @@ export function generateSteps(
         groupKeys: present,
         copy,
         drawerMode: meta?.drawerMode,
+        helpers: meta?.helpers,
+        usesFittings: meta?.usesFittings,
       });
     }
   }
@@ -96,13 +117,37 @@ export function generateSteps(
     addStepWithMeta(
       drawerKeys,
       "Assemble this drawer first. Repeat for any other drawers in the same way.",
-      { drawerMode: "assembleFirst" }
+      {
+        drawerMode: "assembleFirst",
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Common mistakes",
+            content:
+              "Over-tightening corner clips — hand-tight is sufficient. Check the drawer box is square before fitting the bottom panel.",
+          },
+          {
+            title: "Professional tip",
+            content:
+              "Pre-fit runners to the side panels before carcass assembly for faster installation later.",
+          },
+        ],
+      }
     );
   }
 
   // ── Base step (Bottom + Plinth) ──
   if (!bottomOverlaysSides && (hasBottom || hasPlinth)) {
-    addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.");
+    addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.", {
+      usesFittings: true,
+      helpers: [
+        {
+          title: "Professional tip",
+          content:
+            "Lay the plinth face-down, align the bottom panel, and lock the cams before lifting.",
+        },
+      ],
+    });
   }
 
   // ── Divider + Top + Face Frame Top/Divider (attach face frames with their panels) ──
@@ -115,14 +160,39 @@ export function generateSteps(
     dividerTopKeys,
     dividerTopKeys.some((k) => k.startsWith("Face Frame"))
       ? "Fit the divider and top panel, with their face frame pieces attached."
-      : "Fit the divider and top panel."
+      : "Fit the divider and top panel.",
+    {
+      usesFittings: true,
+      helpers: [
+        {
+          title: "Before tightening",
+          content:
+            "Ensure the divider is perfectly flush with the top edge before locking cams.",
+        },
+      ],
+    }
   );
 
   // ── Fixed shelves (MUST be before sides) ──
   if (hasFixedShelf) {
     addStep(
       ["Fixed Shelf"],
-      "Fit the fixed shelves before closing the cabinet with the sides."
+      "Fit the fixed shelves before closing the cabinet with the sides.",
+      {
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Why this matters",
+            content:
+              "Fixed shelves cannot be inserted after the sides are fitted — they must go in now.",
+          },
+          {
+            title: "Common mistakes",
+            content:
+              "Fitting shelves upside down — check edge banding faces forward.",
+          },
+        ],
+      }
     );
   }
 
@@ -134,34 +204,86 @@ export function generateSteps(
     sidesKeys,
     sidesKeys.some((k) => k.startsWith("Face Frame"))
       ? "Attach the left and right sides, with their face frame pieces attached."
-      : "Attach the left and right sides."
+      : "Attach the left and right sides.",
+    {
+      usesFittings: true,
+      helpers: [
+        {
+          title: "Professional tip",
+          content:
+            "Have a second person hold the sides while you lock the cams for easier alignment.",
+        },
+      ],
+    }
   );
 
   // ── Overlay bottom (AFTER sides when flag set) ──
   if (bottomOverlaysSides && (hasBottom || hasPlinth)) {
-    addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.");
+    addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.", {
+      usesFittings: true,
+      helpers: [
+        {
+          title: "Why this matters",
+          content:
+            "On this unit, the bottom overlays the sides and must be fitted after them.",
+        },
+      ],
+    });
   }
 
   // ── Back ──
-  addStep(["Back"], "Secure the back panels to square the cabinet.");
+  addStep(["Back"], "Secure the back panels to square the cabinet.", {
+    usesFittings: true,
+    helpers: [
+      {
+        title: "Before tightening",
+        content:
+          "Check the cabinet is square by measuring corner-to-corner diagonals — they should be equal.",
+      },
+      {
+        title: "Professional tip",
+        content:
+          "Start with the centre screws, then work outwards to keep the back aligned.",
+      },
+    ],
+  });
 
   // ── Rear brace (MUST be after Back) ──
   if (has("Rear Brace")) {
     addStep(
       ["Rear Brace"],
-      "Fit the rear brace after the back panels are installed."
+      "Fit the rear brace after the back panels are installed.",
+      { usesFittings: true }
     );
   }
 
   // ── Doors ──
-  addStep(["Door"], "Fit the doors to the carcass.");
+  addStep(["Door"], "Fit the doors to the carcass.", {
+    usesFittings: true,
+    helpers: [
+      {
+        title: "Professional tip",
+        content:
+          "Hang doors with hinges loose, align gaps evenly (~3mm), then tighten.",
+      },
+    ],
+  });
 
   // ── DRAWER INSERT (drawers slide in at end; they were hidden during carcass) ──
   if (drawerKeys.length > 0) {
     addStepWithMeta(
       drawerKeys,
       "Slide each assembled drawer into its opening in the cabinet.",
-      { drawerMode: "insertAll" }
+      {
+        drawerMode: "insertAll",
+        helpers: [
+          {
+            title: "Professional tip",
+            content:
+              "Push each drawer in firmly until the runners click. Test the slide action before moving on.",
+          },
+        ],
+      }
     );
   }
 

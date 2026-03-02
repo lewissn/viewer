@@ -5,6 +5,11 @@
  * To add a new guide, add an entry to ASSEMBLY_GUIDES below.
  */
 
+export interface StepHelper {
+  title: string;
+  content: string;
+}
+
 export interface AssemblyStep {
   /** Part-name prefixes to highlight and assemble in this step (case-insensitive startsWith) */
   prefixes: string[];
@@ -12,6 +17,10 @@ export interface AssemblyStep {
   copy: string;
   /** Drawer-specific behaviour: assembleFirst = show one drawer only; insertAll = show all drawers */
   drawerMode?: "assembleFirst" | "insertAll";
+  /** Optional expandable helper blocks (progressive disclosure) */
+  helpers?: StepHelper[];
+  /** True if this step uses fittings from the sidebar */
+  usesFittings?: boolean;
 }
 
 export interface ExplodeConfig {

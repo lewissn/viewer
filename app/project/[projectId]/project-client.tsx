@@ -7,6 +7,7 @@ import {
   AssemblyGuideController,
   type ControllerState,
 } from "@/lib/assemblyGuideController";
+import type { StepHelper } from "@/lib/assemblyGuides";
 import { buildProjectNavigation } from "@/lib/navigation";
 import { DesktopSidebar, MobileNav } from "@/app/assembly/side-nav";
 import { useTheme } from "@/lib/theme-context";
@@ -192,6 +193,12 @@ export default function ProjectClient({ project }: Props) {
 
   const cabinetTitle = activeCabinet?.cabinetName ?? project.projectName;
   const hasCabinet = !!activeCabinet?.modelFileUrl;
+  const hasFittings = (activeCabinet?.erpFittings?.length ?? 0) > 0;
+
+  const isBackStep =
+    currentStepData != null &&
+    !isComplete &&
+    currentStepData.prefixes.includes("Back");
 
   return (
     <div className="flex w-screen h-screen bg-[var(--background)] overflow-hidden transition-colors">
@@ -444,6 +451,33 @@ export default function ProjectClient({ project }: Props) {
           }}
         />
 
+        {/* Square-check visual cue (back step only) */}
+        {isBackStep && wizardOpen && !loading && (
+          <div className="absolute inset-0 z-30 pointer-events-none">
+            <svg className="w-full h-full" preserveAspectRatio="none">
+              <line
+                x1="15%" y1="15%" x2="85%" y2="75%"
+                stroke="var(--accent)"
+                strokeWidth="1"
+                strokeDasharray="8 6"
+                opacity="0.25"
+              />
+              <line
+                x1="85%" y1="15%" x2="15%" y2="75%"
+                stroke="var(--accent)"
+                strokeWidth="1"
+                strokeDasharray="8 6"
+                opacity="0.25"
+              />
+              {/* Corner markers */}
+              <circle cx="15%" cy="15%" r="6" fill="var(--accent)" opacity="0.2" />
+              <circle cx="85%" cy="15%" r="6" fill="var(--accent)" opacity="0.2" />
+              <circle cx="15%" cy="75%" r="6" fill="var(--accent)" opacity="0.2" />
+              <circle cx="85%" cy="75%" r="6" fill="var(--accent)" opacity="0.2" />
+            </svg>
+          </div>
+        )}
+
         {/* Wizard modal */}
         {wizardOpen && !loading && !loadError && hasCabinet && (
           <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[360px] sm:max-w-[420px]">
@@ -470,16 +504,77 @@ export default function ProjectClient({ project }: Props) {
               )}
 
               <div className="px-5 py-4">
-                {/* Intro state */}
+                {/* Intro state — context-aware build summary */}
                 {isIntro && (
                   <>
-                    <h3 className="text-[17px] font-semibold text-[var(--foreground)] mb-1">
+                    <h3 className="text-[17px] font-semibold text-[var(--foreground)] mb-0.5">
                       {cabinetTitle}
                     </h3>
-                    <p className="text-[14px] text-[var(--muted)] leading-relaxed mb-4">
-                      Follow the step-by-step guide to assemble your cabinet.
-                      Each step highlights the parts to fit.
-                    </p>
+
+                    {state.cabinetSummary ? (
+                      <div className="space-y-3 mb-4">
+                        {/* Build overview */}
+                        {state.cabinetSummary.features.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1.5">
+                              Build Overview
+                            </p>
+                            <ul className="space-y-0.5">
+                              {state.cabinetSummary.features.map((f, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-center gap-2 text-[13px] text-[var(--foreground)]"
+                                >
+                                  <svg className="w-3 h-3 text-[var(--accent)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                  </svg>
+                                  <span>
+                                    {f.label}
+                                    {f.count != null && f.count > 1 && (
+                                      <span className="text-[var(--muted)]"> ({f.count})</span>
+                                    )}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Estimate + difficulty */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-[12px] text-[var(--muted)]">
+                            ~{state.cabinetSummary.estimatedMinutes} mins
+                          </span>
+                          <DifficultyBadge level={state.cabinetSummary.difficulty} />
+                        </div>
+
+                        {/* Conditional notes */}
+                        {state.cabinetSummary.notes.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1.5">
+                              Important
+                            </p>
+                            <ul className="space-y-1">
+                              {state.cabinetSummary.notes.map((note, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-start gap-2 text-[12px] text-[var(--muted)] leading-snug"
+                                >
+                                  <span className="text-amber-500 flex-shrink-0 mt-px">•</span>
+                                  {note}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[14px] text-[var(--muted)] leading-relaxed mb-4">
+                        Follow the step-by-step guide to assemble your cabinet.
+                        Each step highlights the parts to fit.
+                      </p>
+                    )}
+
                     <div className="flex items-center justify-between">
                       <button
                         onClick={handleClose}
@@ -503,10 +598,35 @@ export default function ProjectClient({ project }: Props) {
                     <p className="text-[12px] text-[var(--muted)] mb-1">
                       Step {stepIndex + 1} of {state.totalSteps}
                     </p>
-                    <p className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-4">
+                    <p className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2">
                       {currentStepData.copy}
                     </p>
-                    <div className="flex items-center justify-between">
+
+                    {/* Fittings reference */}
+                    {currentStepData.usesFittings && hasFittings && (
+                      <p className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-1.5">
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.384-3.08A1.615 1.615 0 015 10.683V6.748a1.615 1.615 0 011.036-1.506l5.384-3.08a1.615 1.615 0 011.16 0l5.384 3.08A1.615 1.615 0 0119 6.748v3.935a1.615 1.615 0 01-1.036 1.506l-5.384 3.08a1.615 1.615 0 01-1.16 0z" />
+                        </svg>
+                        Uses fittings listed in the sidebar.
+                      </p>
+                    )}
+
+                    {/* Drawer sub-steps (visual only) */}
+                    {currentStepData.drawerMode === "assembleFirst" && (
+                      <DrawerSubSteps />
+                    )}
+
+                    {/* Expandable helpers */}
+                    {currentStepData.helpers && currentStepData.helpers.length > 0 && (
+                      <div className="space-y-0 mb-1">
+                        {currentStepData.helpers.map((helper, i) => (
+                          <HelperAccordion key={`${stepIndex}-${i}`} helper={helper} />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-3">
                       <button
                         onClick={handleBack}
                         disabled={state.isAnimating}
@@ -535,33 +655,37 @@ export default function ProjectClient({ project }: Props) {
                   </>
                 )}
 
-                {/* Complete state */}
+                {/* Complete state — confidence checklist */}
                 {isComplete && (
                   <>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-2">
                       <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.4)]">
-                        <svg
-                          className="w-3.5 h-3.5 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M4.5 12.75l6 6 9-13.5"
-                          />
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                         </svg>
                       </div>
                       <h3 className="text-[17px] font-semibold text-[var(--foreground)]">
                         Assembly Complete
                       </h3>
                     </div>
-                    <p className="text-[14px] text-[var(--muted)] leading-relaxed mb-4">
-                      Your {cabinetTitle.toLowerCase()} is fully assembled. You
-                      can restart the guide or close this panel.
+
+                    <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1.5">
+                      Before placing in position
                     </p>
+                    <ul className="space-y-1.5 mb-4">
+                      {[
+                        "Check cabinet is square (diagonals equal)",
+                        "Check all cams are tightened",
+                        "Check door gaps are even (~3mm)",
+                        "Install anti-tilt bracket if supplied",
+                      ].map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-[13px] text-[var(--foreground)]">
+                          <span className="w-4 h-4 rounded border border-[var(--muted)]/30 flex-shrink-0 mt-0.5" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+
                     <div className="flex items-center justify-between">
                       <button
                         onClick={handleClose}
@@ -584,5 +708,92 @@ export default function ProjectClient({ project }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+/* ─── Supporting Components ─── */
+
+const DRAWER_SUBSTEPS = [
+  "Prepare drawer parts",
+  "Build drawer box",
+  "Fit corner clips",
+  "Install runners",
+  "Insert drawer",
+  "Adjust alignment",
+];
+
+function DrawerSubSteps() {
+  return (
+    <div className="mb-2">
+      <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
+        Sub-steps
+      </p>
+      <ol className="space-y-0.5">
+        {DRAWER_SUBSTEPS.map((label, i) => (
+          <li
+            key={i}
+            className="flex items-center gap-2 text-[12px] text-[var(--muted)]"
+          >
+            <span className="w-4 text-right text-[10px] tabular-nums flex-shrink-0 opacity-50">
+              {i + 1}.
+            </span>
+            {label}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function HelperAccordion({ helper }: { helper: StepHelper }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t border-[var(--sidebar-border)]/30">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 w-full py-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+      >
+        <svg
+          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M8.25 4.5l7.5 7.5-7.5 7.5"
+          />
+        </svg>
+        <span className="font-medium">{helper.title}</span>
+      </button>
+      {open && (
+        <p className="text-[12px] text-[var(--muted)] leading-relaxed pl-[18px] pb-2">
+          {helper.content}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DifficultyBadge({
+  level,
+}: {
+  level: "Easy" | "Moderate" | "Advanced";
+}) {
+  const colors: Record<string, string> = {
+    Easy: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    Moderate: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    Advanced: "bg-red-500/10 text-red-600 dark:text-red-400",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium ${colors[level]}`}
+    >
+      {level}
+    </span>
   );
 }

@@ -20,6 +20,10 @@ import {
   generateGuideFromParts,
 } from "./classifyPart";
 import type { GuideOverrides } from "./projects";
+import {
+  buildCabinetSummary,
+  type CabinetBuildSummary,
+} from "./assembly/cabinetSummary";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -65,6 +69,8 @@ export interface ControllerState {
   totalSteps: number;
   activeSteps: AssemblyStep[]; // steps with parts (skips empty)
   isAnimating: boolean;
+  /** Context-aware build summary (dynamic mode only) */
+  cabinetSummary?: CabinetBuildSummary;
 }
 
 export type StateListener = (state: ControllerState) => void;
@@ -119,6 +125,7 @@ export class AssemblyGuideController {
   private _isAnimating = false;
   private _activeSteps: AssemblyStep[] = [];
   private _assembledKeys: Set<string> = new Set(); // prefixes (legacy) or groupKeys (dynamic)
+  private _cabinetSummary?: CabinetBuildSummary;
 
   private listeners: StateListener[] = [];
   private animationFrameId: number | null = null;
@@ -198,6 +205,17 @@ export class AssemblyGuideController {
     // Compute exploded positions using groupKey offsets
     this.computeExplodedPositionsDynamic(generated.explodeOffsets);
 
+    // Build cabinet summary from detected groups
+    const groupCounts: Record<string, number> = {};
+    for (const [key, parts] of this.partGroups) {
+      groupCounts[key] = parts.length;
+    }
+    this._cabinetSummary = buildCabinetSummary(
+      generated.detectedGroups,
+      groupCounts,
+      { bottomOverlaysSides: overrides?.bottomOverlaysSides }
+    );
+
     // Convert generated steps to AssemblyStep format
     this._activeSteps = [];
     this._stepGroupKeys = [];
@@ -214,6 +232,8 @@ export class AssemblyGuideController {
         prefixes: step.groupKeys,
         copy: step.copy,
         drawerMode: step.drawerMode,
+        helpers: step.helpers,
+        usesFittings: step.usesFittings,
       });
       this._stepGroupKeys.push(step.groupKeys);
       this._stepDrawerModes.push(step.drawerMode);
@@ -728,6 +748,7 @@ export class AssemblyGuideController {
       totalSteps: this._activeSteps.length,
       activeSteps: this._activeSteps,
       isAnimating: this._isAnimating,
+      cabinetSummary: this._cabinetSummary,
     };
   }
 
