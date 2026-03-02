@@ -102,7 +102,7 @@ export function classifyPart(name: string): Classification {
   if (norm.startsWith("filler")) return { groupKey: "Filler" };
 
   // 8) STANDARD CARCASS — longest-match-wins (ordered longest first)
-  // Fixed Shelf before generic Shelf (naming convention for fixed-only)
+  // Fixed Shelf before generic Shelf; Mobile Shelf is a removable shelf variant
   const carcassPrefixes: [string, string][] = [
     ["vertical division", "Vertical Division"],
     ["vertical divider", "Vertical Division"],
@@ -111,6 +111,7 @@ export function classifyPart(name: string): Classification {
     ["right side", "Right Side"],
     ["fixed shelf", "Fixed Shelf"],
     ["fixed shelves", "Fixed Shelf"],
+    ["mobile shelf", "Shelf"],
     ["bottom", "Bottom"],
     ["plinth", "Plinth"],
     ["top", "Top"],
@@ -129,31 +130,33 @@ export function classifyPart(name: string): Classification {
 
 // ── Default explode offsets per group key ──
 
+// Offsets are [x, y, z] direction multipliers: X left(-)/right(+), Y down(-)/up(+), Z back(-)/front(+).
+// Each part starts at assembledPos + offset * baseDistance and animates TO assembledPos.
 export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> = {
   Bottom: [0, -1, 0],
-  Plinth: [0, -1.4, 0.3],
+  Plinth: [0, -1.4, 0],
   Top: [0, 1, 0],
-  "Vertical Division": [0, 0.3, 0.5],
+  "Vertical Division": [0, 1, 0],
   "Left Side": [-1, 0, 0],
   "Right Side": [1, 0, 0],
-  Back: [0, 0, -1.2],
-  "Rear Brace": [0, 0.2, -1],
+  Back: [0, 1.2, 0],
+  "Rear Brace": [0, 0.8, -0.3],
   Door: [0, 0, 1.4],
-  "Counter Top": [0, 1.3, 0.3],
+  "Counter Top": [0, 1.3, 0],
   "Face Frame": [0, 0, 1.0],
   "Face Frame - Top": [0, 0, 1.0],
   "Face Frame - Left": [0, 0, 1.0],
   "Face Frame - Right": [0, 0, 1.0],
   "Face Frame - Divider": [0, 0, 1.0],
-  "Drawer Box - Left": [0, -0.5, 1.2],
-  "Drawer Box - Right": [0, -0.5, 1.2],
-  "Drawer Box - Back": [0, -0.5, 1.2],
-  "Drawer Box - Bottom": [0, -0.5, 1.2],
-  Drawer: [0, -0.5, 1.2],
-  "Fixed Shelf": [0, 0.6, 0.4],
-  Shelf: [0, 0.6, 0.4],
-  "Filler - Side": [1.2, 0, 0.5],
-  "Filler - Front": [1.2, 0, 0.5],
+  "Drawer Box - Left": [-0.5, 0, 1.0],
+  "Drawer Box - Right": [0.5, 0, 1.0],
+  "Drawer Box - Back": [0, 0, 0.8],
+  "Drawer Box - Bottom": [0, -0.5, 1.0],
+  Drawer: [0, 0, 1.4],
+  "Fixed Shelf": [0, 0, 0.8],
+  Shelf: [0, 0, 0.8],
+  "Filler - Side": [1.2, 0, 0],
+  "Filler - Front": [0, 0, 1.0],
   Filler: [1.2, 0, 0.5],
   Hinge: [0, 0, 1.3],
   Other: [0, 0.5, 0.5],
