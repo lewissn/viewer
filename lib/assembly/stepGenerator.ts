@@ -122,14 +122,19 @@ export function generateSteps(
         usesFittings: true,
         helpers: [
           {
+            title: "Drawer identification",
+            content:
+              "Each drawer part label ends with an ID number (e.g. [1]_1, [2]_1). Match parts with the same number to build the correct drawer.",
+          },
+          {
             title: "Common mistakes",
             content:
-              "Over-tightening corner clips — hand-tight is sufficient. Check the drawer box is square before fitting the bottom panel.",
+              "Over-tightening Rafix cams — this can damage the screw and make disassembly difficult. Tighten until snug, then stop.",
           },
           {
             title: "Professional tip",
             content:
-              "Pre-fit runners to the side panels before carcass assembly for faster installation later.",
+              "Pre-fit the undermount runners to the cabinet side panels before carcass assembly — it saves time later.",
           },
         ],
       }
@@ -142,9 +147,14 @@ export function generateSteps(
       usesFittings: true,
       helpers: [
         {
+          title: "Before tightening",
+          content:
+            "Insert all Rafix cam screws and tap Rafix cams into place on both panels before connecting. Do not over-tighten — snug is sufficient.",
+        },
+        {
           title: "Professional tip",
           content:
-            "Lay the plinth face-down, align the bottom panel, and lock the cams before lifting.",
+            "Lay the plinth face-down with the front edge on the floor, align the bottom panel, and lock the cams. The cabinet is built front-edges-down and lifted upright once complete.",
         },
       ],
     });
@@ -156,22 +166,35 @@ export function generateSteps(
   if (has("Face Frame - Divider")) dividerTopKeys.push("Face Frame - Divider");
   if (has("Face Frame") && faceFrameKeys.length === 0)
     dividerTopKeys.push("Face Frame");
-  addStep(
-    dividerTopKeys,
-    dividerTopKeys.some((k) => k.startsWith("Face Frame"))
-      ? "Fit the divider and top panel, with their face frame pieces attached."
-      : "Fit the divider and top panel.",
-    {
-      usesFittings: true,
-      helpers: [
-        {
-          title: "Before tightening",
-          content:
-            "Ensure the divider is perfectly flush with the top edge before locking cams.",
-        },
-      ],
+  {
+    const hasDivider = has("Vertical Division");
+    const dividerHelpers: StepHelper[] = [
+      {
+        title: "Before tightening",
+        content:
+          "With the front edges facing the floor, connect the top, bottom and divider(s) to form the inner structure. Ensure the divider is flush with the top edge before locking cams.",
+      },
+    ];
+    if (hasDivider) {
+      dividerHelpers.push({
+        title: "Divider orientation",
+        content:
+          "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
+      });
     }
-  );
+    addStep(
+      dividerTopKeys,
+      dividerTopKeys.some((k) => k.startsWith("Face Frame"))
+        ? "Fit the divider and top panel, with their face frame pieces attached."
+        : hasDivider
+          ? "Fit the divider and top panel to form the inner structure."
+          : "Fit the top panel.",
+      {
+        usesFittings: true,
+        helpers: dividerHelpers,
+      }
+    );
+  }
 
   // ── Fixed shelves (MUST be before sides) ──
   if (hasFixedShelf) {
@@ -209,9 +232,14 @@ export function generateSteps(
       usesFittings: true,
       helpers: [
         {
+          title: "Before tightening",
+          content:
+            "With the cabinet still front-edges-down, position each side panel with cam screws aligned and fasten. Do not over-tighten Rafix cams.",
+        },
+        {
           title: "Professional tip",
           content:
-            "Have a second person hold the sides while you lock the cams for easier alignment.",
+            "This stage can be heavy — have a second person hold the sides while you lock the cams for easier alignment.",
         },
       ],
     }
@@ -219,16 +247,25 @@ export function generateSteps(
 
   // ── Overlay bottom (AFTER sides when flag set) ──
   if (bottomOverlaysSides && (hasBottom || hasPlinth)) {
-    addStep(["Bottom", "Plinth"], "Connect the bottom and plinth panels.", {
-      usesFittings: true,
-      helpers: [
-        {
-          title: "Why this matters",
-          content:
-            "On this unit, the bottom overlays the sides and must be fitted after them.",
-        },
-      ],
-    });
+    addStep(
+      ["Bottom", "Plinth"],
+      "Align and fix the bottom panel to the structure.",
+      {
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Why this matters",
+            content:
+              "On upper units, the bottom overlays the sides and is fixed last using 40mm screws. Do not attempt to fit it before the sides and back are in place.",
+          },
+          {
+            title: "Professional tip",
+            content:
+              "Build the upper unit lying flat — start with the top panel front-edge-down, connect dividers and sides, fit the back, then fix the bottom last. Stand the unit upright only when fully assembled.",
+          },
+        ],
+      }
+    );
   }
 
   // ── Back ──
@@ -238,12 +275,17 @@ export function generateSteps(
       {
         title: "Before tightening",
         content:
-          "Check the cabinet is square by measuring corner-to-corner diagonals — they should be equal.",
+          "With the cabinet still face-down, slide the back panel into the grooves until flush with the top. Measure diagonally — top-left to bottom-right, then top-right to bottom-left — both should match. Adjust gently until square, then fix.",
+      },
+      {
+        title: "Why this matters",
+        content:
+          "The back panel locks the cabinet's shape. Fixing it while out of square will cause door alignment issues later.",
       },
       {
         title: "Professional tip",
         content:
-          "Start with the centre screws, then work outwards to keep the back aligned.",
+          "Start with the centre screws, then work outwards to keep the back aligned. Once the back is fixed, stand the cabinet upright onto its feet.",
       },
     ],
   });
@@ -262,9 +304,14 @@ export function generateSteps(
     usesFittings: true,
     helpers: [
       {
-        title: "Professional tip",
+        title: "Before tightening",
         content:
-          "Hang doors with hinges loose, align gaps evenly (~3mm), then tighten.",
+          "Attach hinges to the door using 16mm screws, then clip onto the hinge plates. Leave the adjustment screws loose until all doors are hung.",
+      },
+      {
+        title: "Adjusting your hinges",
+        content:
+          "Each hinge has three adjustments: height (via mounting plate), side (screw on hinge arm), and depth (cam adjuster on hinge arm). Aim for even 3mm gaps on all sides.",
       },
     ],
   });
@@ -278,9 +325,14 @@ export function generateSteps(
         drawerMode: "insertAll",
         helpers: [
           {
-            title: "Professional tip",
+            title: "Common mistakes",
             content:
-              "Push each drawer in firmly until the runners click. Test the slide action before moving on.",
+              "If one side clicks and the other doesn't, remove the drawer and try again — don't force it.",
+          },
+          {
+            title: "Adjusting your drawers",
+            content:
+              "Under each drawer are three adjustments in the clips: up/down (height), left/right (gap between drawers), and in/out (how far the front sits against the cabinet).",
           },
         ],
       }
@@ -288,7 +340,21 @@ export function generateSteps(
   }
 
   // ── Counter top ──
-  addStep(["Counter Top"], "Place the counter top to finish.");
+  addStep(["Counter Top"], "Place the counter top to finish.", {
+    usesFittings: true,
+    helpers: [
+      {
+        title: "Before tightening",
+        content:
+          "Insert wooden dowels into the holes on top for alignment, then fix using 30mm screws through the pre-drilled holes inside the unit.",
+      },
+      {
+        title: "Common mistakes",
+        content:
+          "Gaps between the countertop and carcass — loosen the screw, press the joint closed, then re-tighten.",
+      },
+    ],
+  });
 
   // ── Shelves (removable, not fixed) ──
   if (has("Shelf")) {

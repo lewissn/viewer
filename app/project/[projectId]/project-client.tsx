@@ -674,10 +674,11 @@ export default function ProjectClient({ project }: Props) {
                     </p>
                     <ul className="space-y-1.5 mb-4">
                       {[
-                        "Check cabinet is square (diagonals equal)",
-                        "Check all cams are tightened",
-                        "Check door gaps are even (~3mm)",
-                        "Install anti-tilt bracket if supplied",
+                        "Cabinet is square — diagonals are equal",
+                        "All Rafix cams are tight (but not over-tightened)",
+                        "Door gaps are even (~3mm all round)",
+                        "Drawers slide smoothly and clips are clicked in",
+                        "Anti-tilt bracket fitted if supplied",
                       ].map((item, i) => (
                         <li key={i} className="flex items-start gap-2 text-[13px] text-[var(--foreground)]">
                           <span className="w-4 h-4 rounded border border-[var(--muted)]/30 flex-shrink-0 mt-0.5" />
