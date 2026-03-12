@@ -418,24 +418,44 @@ export class AssemblyGuideController {
     const measured: { part: PartMesh; size: number }[] = [];
     let unmeasured = 0;
 
-    // Log the first part's mesh structure to help diagnose geometry access
+    // Detailed diagnostic on first part to trace why measurement fails
     if (this.allParts.length > 0) {
-      const sample = this.allParts[0].threeMesh;
-      const mi = sample.userData?.originalMeshInstance;
+      const sample = this.allParts[0];
+      const mesh = sample.threeMesh;
+      const mi = mesh.userData?.originalMeshInstance;
       const o3dvMesh = mi?.GetMesh?.();
-      console.log("[AssemblyGuide] Mesh diagnostics:", {
-        hasGeometry: !!sample.geometry,
-        geometryType: sample.geometry?.constructor?.name,
-        hasAttributes: !!sample.geometry?.attributes,
-        hasPosition: !!sample.geometry?.attributes?.position,
-        hasBoundingBox: !!sample.geometry?.boundingBox,
-        hasMeshInstance: !!mi,
-        hasO3dvMesh: !!o3dvMesh,
-        o3dvMeshMethods: o3dvMesh
-          ? Object.getOwnPropertyNames(Object.getPrototypeOf(o3dvMesh)).filter(
-              (k) => typeof o3dvMesh[k] === "function"
-            )
-          : [],
+
+      // Test o3dv vertex access
+      let vertexInfo = "no o3dv mesh";
+      if (o3dvMesh) {
+        try {
+          const vc = o3dvMesh.VertexCount();
+          if (vc > 0) {
+            const v0 = o3dvMesh.GetVertex(0);
+            vertexInfo = `count=${vc}, v0=${JSON.stringify(v0)}`;
+          } else {
+            vertexInfo = `count=0`;
+          }
+        } catch (e: any) {
+          vertexInfo = `error: ${e?.message ?? e}`;
+        }
+      }
+
+      // Test getMeshSize result
+      let sizeResult: number | string;
+      try {
+        sizeResult = this.getMeshSize(sample);
+      } catch (e: any) {
+        sizeResult = `error: ${e?.message ?? e}`;
+      }
+
+      console.log("[AssemblyGuide] Fitting diagnostics (first part):", {
+        name: sample.name,
+        o3dvVertices: vertexInfo,
+        getMeshSizeResult: sizeResult,
+        meshScale: mesh.scale
+          ? { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z }
+          : "none",
       });
     }
 
