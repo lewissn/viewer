@@ -299,7 +299,10 @@ export default function ProjectClient({ project }: Props) {
                         Lay out all panels for the cabinet you are about to
                         build. Familiarise yourself with each piece — the
                         printed labels on the edges will match the part names
-                        shown in the guide.
+                        shown in the guide. Refer to the provided{" "}
+                        <strong>Exploded Diagrams</strong> which show the panel
+                        numbering for each panel — these numbers correlate with
+                        the Part Numbers on the labels.
                       </p>
                     </div>
                   </div>
@@ -673,13 +676,35 @@ export default function ProjectClient({ project }: Props) {
                       Before placing in position
                     </p>
                     <ul className="space-y-1.5 mb-4">
-                      {[
-                        "Cabinet is square — diagonals are equal",
-                        "All Rafix cams are tight (but not over-tightened)",
-                        "Door gaps are even (~3mm all round)",
-                        "Drawers slide smoothly and clips are clicked in",
-                        "Anti-tilt bracket fitted if supplied",
-                      ].map((item, i) => (
+                      {(() => {
+                        const groups = new Set(state.detectedGroups ?? []);
+                        const fittingIds = new Set(
+                          (activeCabinet?.erpFittings ?? []).map((f) => f.partId)
+                        );
+                        const items: string[] = [
+                          "Cabinet is square — diagonals are equal",
+                          "All Rafix cams are tight (but not over-tightened)",
+                        ];
+                        if (groups.has("Door")) {
+                          items.push("Door gaps are even (~3mm all round)");
+                        }
+                        if (
+                          groups.has("Drawer") ||
+                          groups.has("Drawer Box - Left") ||
+                          groups.has("Drawer Box - Right") ||
+                          groups.has("Drawer Box - Back") ||
+                          groups.has("Drawer Box - Bottom")
+                        ) {
+                          items.push("Drawers slide smoothly and clips are clicked in");
+                        }
+                        if (
+                          fittingIds.has("ANTI_TILT_BRACKET") ||
+                          fittingIds.has("ANTI_TILT_PLATE")
+                        ) {
+                          items.push("Anti-tilt bracket fitted and secured to the wall");
+                        }
+                        return items;
+                      })().map((item, i) => (
                         <li key={i} className="flex items-start gap-2 text-[13px] text-[var(--foreground)]">
                           <span className="w-4 h-4 rounded border border-[var(--muted)]/30 flex-shrink-0 mt-0.5" />
                           {item}

@@ -62,6 +62,8 @@ interface PartMesh {
   explodedPos: Vec3; // computed exploded local position
   /** Drawer index e.g. "[2]_1" for drawer box parts */
   drawerIndex?: string;
+  /** True if this mesh is a small fitting (cam, screw, etc.) rather than a panel */
+  isFitting?: boolean;
 }
 
 export interface ControllerState {
@@ -71,6 +73,8 @@ export interface ControllerState {
   isAnimating: boolean;
   /** Context-aware build summary (dynamic mode only) */
   cabinetSummary?: CabinetBuildSummary;
+  /** All detected group keys (dynamic mode only) */
+  detectedGroups?: string[];
 }
 
 export type StateListener = (state: ControllerState) => void;
@@ -126,6 +130,7 @@ export class AssemblyGuideController {
   private _activeSteps: AssemblyStep[] = [];
   private _assembledKeys: Set<string> = new Set(); // prefixes (legacy) or groupKeys (dynamic)
   private _cabinetSummary?: CabinetBuildSummary;
+  private _detectedGroups?: string[];
 
   private listeners: StateListener[] = [];
   private animationFrameId: number | null = null;
@@ -193,11 +198,16 @@ export class AssemblyGuideController {
       return;
     }
 
-    // Classify and group by groupKey
+    // Flag small meshes as fittings (cams, screws from 3DS exports)
+    this.flagFittingsBySize();
+
+    // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
 
-    // Generate guide from detected parts
-    const partNames = this.allParts.map((p) => p.name);
+    // Generate guide from panel parts only (exclude fittings)
+    const partNames = this.allParts
+      .filter((p) => !p.isFitting)
+      .map((p) => p.name);
     const generated = generateGuideFromParts(partNames, overrides);
 
     console.log("[AssemblyGuide] Detected groups:", generated.detectedGroups);
@@ -215,6 +225,7 @@ export class AssemblyGuideController {
       groupCounts,
       { bottomOverlaysSides: overrides?.bottomOverlaysSides }
     );
+    this._detectedGroups = generated.detectedGroups;
 
     // Convert generated steps to AssemblyStep format
     this._activeSteps = [];
@@ -300,6 +311,55 @@ export class AssemblyGuideController {
     }
   }
 
+  /**
+   * Flag small meshes as fittings (cams, screws, etc.) based on bounding box size.
+   * 3DS exports include fitting models named after panels — these are far smaller
+   * than any panel and should be hidden during assembly steps.
+   */
+  private flagFittingsBySize() {
+    const diags: { part: PartMesh; diagonal: number }[] = [];
+
+    for (const part of this.allParts) {
+      const geom = part.threeMesh.geometry;
+      if (geom && typeof geom.computeBoundingBox === "function") {
+        geom.computeBoundingBox();
+        const box = geom.boundingBox;
+        if (box) {
+          const dx = box.max.x - box.min.x;
+          const dy = box.max.y - box.min.y;
+          const dz = box.max.z - box.min.z;
+          diags.push({ part, diagonal: Math.sqrt(dx * dx + dy * dy + dz * dz) });
+        }
+      }
+    }
+
+    if (diags.length < 2) return;
+
+    // Median diagonal of all parts
+    const sorted = [...diags].sort((a, b) => a.diagonal - b.diagonal);
+    const median = sorted[Math.floor(sorted.length / 2)].diagonal;
+
+    // Parts smaller than 15% of median are likely fittings, not panels
+    const threshold = median * 0.15;
+
+    let count = 0;
+    for (const { part, diagonal } of diags) {
+      if (diagonal < threshold) {
+        part.isFitting = true;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      log(
+        `Flagged ${count} parts as fittings (threshold: ${threshold.toFixed(1)}, median: ${median.toFixed(1)})`,
+        this.allParts
+          .filter((p) => p.isFitting)
+          .map((p) => p.name)
+      );
+    }
+  }
+
   /** Group parts by step prefix (legacy mode) */
   private groupPartsByPrefix() {
     this.partGroups.clear();
@@ -322,11 +382,12 @@ export class AssemblyGuideController {
     }
   }
 
-  /** Group parts by classification groupKey (dynamic mode) */
+  /** Group parts by classification groupKey (dynamic mode), excluding fittings */
   private groupPartsByClassification() {
     this.partGroups.clear();
 
     for (const part of this.allParts) {
+      if (part.isFitting) continue; // Fittings are shown only in assembled state
       const group = this.partGroups.get(part.groupKey) ?? [];
       group.push(part);
       this.partGroups.set(part.groupKey, group);
@@ -403,6 +464,7 @@ export class AssemblyGuideController {
 
   private applyExplodedToAll() {
     for (const part of this.allParts) {
+      if (part.isFitting) continue; // Fittings stay assembled (hidden during steps)
       this.setPartPosition(part, part.explodedPos);
     }
     this.renderViewer();
@@ -583,6 +645,12 @@ export class AssemblyGuideController {
       options.currentStepIndex > lastDrawerIdx;
 
     for (const part of this.allParts) {
+      // Fittings are hidden during assembly steps — only shown in complete state
+      if (part.isFitting) {
+        this.setPartVisible(part, false);
+        continue;
+      }
+
       const isDrawerPart = DRAWER_GROUP_KEYS.has(part.groupKey);
 
       // Drawer visibility: hide during carcass (between assemble and insert)
@@ -749,6 +817,7 @@ export class AssemblyGuideController {
       activeSteps: this._activeSteps,
       isAnimating: this._isAnimating,
       cabinetSummary: this._cabinetSummary,
+      detectedGroups: this._detectedGroups,
     };
   }
 
