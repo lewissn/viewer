@@ -313,32 +313,40 @@ export class AssemblyGuideController {
 
   /**
    * Compute a size metric for a part mesh. Tries multiple strategies:
-   * 1. o3dv MeshInstance → GetMesh() → GetBoundingBox()
-   * 2. o3dv MeshInstance → GetMesh() → TriangleCount() as proxy
-   * 3. THREE.js geometry boundingBox / boundingSphere
-   * 4. Manual computation from position buffer attribute
+   * 1. o3dv MeshInstance → GetMesh() → GetVertex() / VertexCount()
+   * 2. THREE.js geometry boundingBox / boundingSphere
+   * 3. Manual computation from position buffer attribute
    * Returns the bounding diagonal, or -1 if size cannot be determined.
    */
   private getMeshSize(part: PartMesh): number {
     const mesh = part.threeMesh;
 
-    // Strategy 1: o3dv mesh bounding box via MeshInstance
+    // Strategy 1: compute bounds from o3dv mesh vertices
     try {
       const mi = mesh.userData?.originalMeshInstance;
       const o3dvMesh = mi?.GetMesh?.();
-      if (o3dvMesh && typeof o3dvMesh.GetBoundingBox === "function") {
-        const bb = o3dvMesh.GetBoundingBox();
-        if (bb) {
-          // o3dv Box3D has min/max as Coord3D objects with x, y, z
-          const min = bb.min ?? bb.Min?.();
-          const max = bb.max ?? bb.Max?.();
-          if (min && max) {
-            const dx = max.x - min.x;
-            const dy = max.y - min.y;
-            const dz = max.z - min.z;
-            const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (diag > 0 && isFinite(diag)) return diag;
+      if (
+        o3dvMesh &&
+        typeof o3dvMesh.VertexCount === "function" &&
+        typeof o3dvMesh.GetVertex === "function"
+      ) {
+        const count = o3dvMesh.VertexCount();
+        if (count > 0) {
+          let minX = Infinity, minY = Infinity, minZ = Infinity;
+          let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+          // Sample up to 200 vertices for performance
+          const step = Math.max(1, Math.floor(count / 200));
+          for (let i = 0; i < count; i += step) {
+            const v = o3dvMesh.GetVertex(i);
+            if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
+            if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
+            if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
           }
+          const dx = maxX - minX;
+          const dy = maxY - minY;
+          const dz = maxZ - minZ;
+          const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (diag > 0 && isFinite(diag)) return diag;
         }
       }
     } catch { /* fall through */ }
