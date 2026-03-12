@@ -484,12 +484,14 @@ export class AssemblyGuideController {
 
     if (measured.length < 2) return;
 
-    // Median size of all parts
+    // Use the maximum size (largest panel) as reference
     const sorted = [...measured].sort((a, b) => a.size - b.size);
-    const median = sorted[Math.floor(sorted.length / 2)].size;
+    const maxSize = sorted[sorted.length - 1].size;
 
-    // Parts smaller than 15% of median are likely fittings, not panels
-    const threshold = median * 0.15;
+    // Parts smaller than 10% of the largest part are likely fittings, not panels
+    // Panels (even small shelves) will always be >10% of the largest panel
+    // Fittings (cams, dowels, screws) are tiny in comparison
+    const threshold = maxSize * 0.10;
 
     let count = 0;
     for (const { part, size } of measured) {
@@ -500,7 +502,7 @@ export class AssemblyGuideController {
     }
 
     console.log(
-      `[AssemblyGuide] Fitting detection: median=${median.toFixed(1)}, threshold=${threshold.toFixed(1)}, flagged=${count}/${measured.length}`
+      `[AssemblyGuide] Fitting detection: max=${maxSize.toFixed(1)}, threshold=${threshold.toFixed(1)}, flagged=${count}/${measured.length}`
     );
 
     if (count > 0) {
