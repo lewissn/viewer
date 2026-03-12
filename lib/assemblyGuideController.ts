@@ -312,50 +312,129 @@ export class AssemblyGuideController {
   }
 
   /**
-   * Flag small meshes as fittings (cams, screws, etc.) based on bounding box size.
+   * Compute a size metric for a mesh. Tries multiple strategies:
+   * 1. geometry.boundingBox (compute if needed)
+   * 2. geometry.boundingSphere
+   * 3. Manual computation from position buffer attribute
+   * Returns the bounding diagonal, or -1 if size cannot be determined.
+   */
+  private getMeshSize(mesh: any): number {
+    const geom = mesh.geometry;
+    if (!geom) return -1;
+
+    // Strategy 1: boundingBox
+    try {
+      if (typeof geom.computeBoundingBox === "function") {
+        geom.computeBoundingBox();
+      }
+      const box = geom.boundingBox;
+      if (box && box.max && box.min) {
+        const dx = box.max.x - box.min.x;
+        const dy = box.max.y - box.min.y;
+        const dz = box.max.z - box.min.z;
+        const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (diag > 0 && isFinite(diag)) return diag;
+      }
+    } catch { /* fall through */ }
+
+    // Strategy 2: boundingSphere radius (diameter as proxy)
+    try {
+      if (typeof geom.computeBoundingSphere === "function") {
+        geom.computeBoundingSphere();
+      }
+      const sphere = geom.boundingSphere;
+      if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
+        return sphere.radius * 2;
+      }
+    } catch { /* fall through */ }
+
+    // Strategy 3: compute from position buffer attribute
+    try {
+      const posAttr = geom.attributes?.position;
+      if (posAttr && posAttr.count > 0) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        // Sample up to 200 vertices for performance
+        const step = Math.max(1, Math.floor(posAttr.count / 200));
+        for (let i = 0; i < posAttr.count; i += step) {
+          const x = posAttr.getX(i);
+          const y = posAttr.getY(i);
+          const z = posAttr.getZ(i);
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+          if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+        }
+        const dx = maxX - minX;
+        const dy = maxY - minY;
+        const dz = maxZ - minZ;
+        const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (diag > 0 && isFinite(diag)) return diag;
+      }
+    } catch { /* fall through */ }
+
+    return -1;
+  }
+
+  /**
+   * Flag small meshes as fittings (cams, screws, etc.) based on bounding size.
    * 3DS exports include fitting models named after panels — these are far smaller
    * than any panel and should be hidden during assembly steps.
    */
   private flagFittingsBySize() {
-    const diags: { part: PartMesh; diagonal: number }[] = [];
+    const measured: { part: PartMesh; size: number }[] = [];
+    let unmeasured = 0;
 
     for (const part of this.allParts) {
-      const geom = part.threeMesh.geometry;
-      if (geom && typeof geom.computeBoundingBox === "function") {
-        geom.computeBoundingBox();
-        const box = geom.boundingBox;
-        if (box) {
-          const dx = box.max.x - box.min.x;
-          const dy = box.max.y - box.min.y;
-          const dz = box.max.z - box.min.z;
-          diags.push({ part, diagonal: Math.sqrt(dx * dx + dy * dy + dz * dz) });
+      // Account for mesh scale if present
+      const mesh = part.threeMesh;
+      let size = this.getMeshSize(mesh);
+      if (size > 0) {
+        const scale = mesh.scale;
+        if (scale) {
+          const maxScale = Math.max(
+            Math.abs(scale.x ?? 1),
+            Math.abs(scale.y ?? 1),
+            Math.abs(scale.z ?? 1)
+          );
+          size *= maxScale;
         }
+        measured.push({ part, size });
+      } else {
+        unmeasured++;
       }
     }
 
-    if (diags.length < 2) return;
+    console.log(
+      `[AssemblyGuide] Fitting detection: ${measured.length} measured, ${unmeasured} unmeasured`
+    );
 
-    // Median diagonal of all parts
-    const sorted = [...diags].sort((a, b) => a.diagonal - b.diagonal);
-    const median = sorted[Math.floor(sorted.length / 2)].diagonal;
+    if (measured.length < 2) return;
+
+    // Median size of all parts
+    const sorted = [...measured].sort((a, b) => a.size - b.size);
+    const median = sorted[Math.floor(sorted.length / 2)].size;
 
     // Parts smaller than 15% of median are likely fittings, not panels
     const threshold = median * 0.15;
 
     let count = 0;
-    for (const { part, diagonal } of diags) {
-      if (diagonal < threshold) {
+    for (const { part, size } of measured) {
+      if (size < threshold) {
         part.isFitting = true;
         count++;
       }
     }
 
+    console.log(
+      `[AssemblyGuide] Fitting detection: median=${median.toFixed(1)}, threshold=${threshold.toFixed(1)}, flagged=${count}/${measured.length}`
+    );
+
     if (count > 0) {
-      log(
-        `Flagged ${count} parts as fittings (threshold: ${threshold.toFixed(1)}, median: ${median.toFixed(1)})`,
+      console.log(
+        "[AssemblyGuide] Fittings:",
         this.allParts
           .filter((p) => p.isFitting)
-          .map((p) => p.name)
+          .map((p) => `${p.name} (${measured.find((m) => m.part === p)?.size.toFixed(1)})`)
       );
     }
   }
