@@ -312,49 +312,75 @@ export class AssemblyGuideController {
   }
 
   /**
-   * Compute a size metric for a mesh. Tries multiple strategies:
-   * 1. geometry.boundingBox (compute if needed)
-   * 2. geometry.boundingSphere
-   * 3. Manual computation from position buffer attribute
+   * Compute a size metric for a part mesh. Tries multiple strategies:
+   * 1. o3dv MeshInstance → GetMesh() → GetBoundingBox()
+   * 2. o3dv MeshInstance → GetMesh() → TriangleCount() as proxy
+   * 3. THREE.js geometry boundingBox / boundingSphere
+   * 4. Manual computation from position buffer attribute
    * Returns the bounding diagonal, or -1 if size cannot be determined.
    */
-  private getMeshSize(mesh: any): number {
-    const geom = mesh.geometry;
-    if (!geom) return -1;
+  private getMeshSize(part: PartMesh): number {
+    const mesh = part.threeMesh;
 
-    // Strategy 1: boundingBox
+    // Strategy 1: o3dv mesh bounding box via MeshInstance
     try {
-      if (typeof geom.computeBoundingBox === "function") {
-        geom.computeBoundingBox();
-      }
-      const box = geom.boundingBox;
-      if (box && box.max && box.min) {
-        const dx = box.max.x - box.min.x;
-        const dy = box.max.y - box.min.y;
-        const dz = box.max.z - box.min.z;
-        const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (diag > 0 && isFinite(diag)) return diag;
+      const mi = mesh.userData?.originalMeshInstance;
+      const o3dvMesh = mi?.GetMesh?.();
+      if (o3dvMesh && typeof o3dvMesh.GetBoundingBox === "function") {
+        const bb = o3dvMesh.GetBoundingBox();
+        if (bb) {
+          // o3dv Box3D has min/max as Coord3D objects with x, y, z
+          const min = bb.min ?? bb.Min?.();
+          const max = bb.max ?? bb.Max?.();
+          if (min && max) {
+            const dx = max.x - min.x;
+            const dy = max.y - min.y;
+            const dz = max.z - min.z;
+            const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (diag > 0 && isFinite(diag)) return diag;
+          }
+        }
       }
     } catch { /* fall through */ }
 
-    // Strategy 2: boundingSphere radius (diameter as proxy)
+    // Strategy 2: THREE.js geometry boundingBox
     try {
-      if (typeof geom.computeBoundingSphere === "function") {
-        geom.computeBoundingSphere();
-      }
-      const sphere = geom.boundingSphere;
-      if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
-        return sphere.radius * 2;
+      const geom = mesh.geometry;
+      if (geom) {
+        if (typeof geom.computeBoundingBox === "function") {
+          geom.computeBoundingBox();
+        }
+        const box = geom.boundingBox;
+        if (box && box.max && box.min) {
+          const dx = box.max.x - box.min.x;
+          const dy = box.max.y - box.min.y;
+          const dz = box.max.z - box.min.z;
+          const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (diag > 0 && isFinite(diag)) return diag;
+        }
       }
     } catch { /* fall through */ }
 
-    // Strategy 3: compute from position buffer attribute
+    // Strategy 3: THREE.js boundingSphere
     try {
-      const posAttr = geom.attributes?.position;
+      const geom = mesh.geometry;
+      if (geom) {
+        if (typeof geom.computeBoundingSphere === "function") {
+          geom.computeBoundingSphere();
+        }
+        const sphere = geom.boundingSphere;
+        if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
+          return sphere.radius * 2;
+        }
+      }
+    } catch { /* fall through */ }
+
+    // Strategy 4: manual computation from position buffer attribute
+    try {
+      const posAttr = mesh.geometry?.attributes?.position;
       if (posAttr && posAttr.count > 0) {
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        // Sample up to 200 vertices for performance
         const step = Math.max(1, Math.floor(posAttr.count / 200));
         for (let i = 0; i < posAttr.count; i += step) {
           const x = posAttr.getX(i);
@@ -384,12 +410,32 @@ export class AssemblyGuideController {
     const measured: { part: PartMesh; size: number }[] = [];
     let unmeasured = 0;
 
+    // Log the first part's mesh structure to help diagnose geometry access
+    if (this.allParts.length > 0) {
+      const sample = this.allParts[0].threeMesh;
+      const mi = sample.userData?.originalMeshInstance;
+      const o3dvMesh = mi?.GetMesh?.();
+      console.log("[AssemblyGuide] Mesh diagnostics:", {
+        hasGeometry: !!sample.geometry,
+        geometryType: sample.geometry?.constructor?.name,
+        hasAttributes: !!sample.geometry?.attributes,
+        hasPosition: !!sample.geometry?.attributes?.position,
+        hasBoundingBox: !!sample.geometry?.boundingBox,
+        hasMeshInstance: !!mi,
+        hasO3dvMesh: !!o3dvMesh,
+        o3dvMeshMethods: o3dvMesh
+          ? Object.getOwnPropertyNames(Object.getPrototypeOf(o3dvMesh)).filter(
+              (k) => typeof o3dvMesh[k] === "function"
+            )
+          : [],
+      });
+    }
+
     for (const part of this.allParts) {
-      // Account for mesh scale if present
-      const mesh = part.threeMesh;
-      let size = this.getMeshSize(mesh);
+      let size = this.getMeshSize(part);
       if (size > 0) {
-        const scale = mesh.scale;
+        // Account for mesh scale
+        const scale = part.threeMesh.scale;
         if (scale) {
           const maxScale = Math.max(
             Math.abs(scale.x ?? 1),
