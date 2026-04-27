@@ -76,13 +76,6 @@ export function generateSteps(
     has("Drawer Box - Bottom") ||
     has("Drawer");
 
-  const faceFrameKeys: GroupKey[] = [];
-  if (has("Face Frame - Top")) faceFrameKeys.push("Face Frame - Top");
-  if (has("Face Frame - Left")) faceFrameKeys.push("Face Frame - Left");
-  if (has("Face Frame - Right")) faceFrameKeys.push("Face Frame - Right");
-  if (has("Face Frame - Divider")) faceFrameKeys.push("Face Frame - Divider");
-  if (has("Face Frame") && faceFrameKeys.length === 0) faceFrameKeys.push("Face Frame");
-
   const drawerKeys: GroupKey[] = [];
   if (has("Drawer Box - Left")) drawerKeys.push("Drawer Box - Left");
   if (has("Drawer Box - Right")) drawerKeys.push("Drawer Box - Right");
@@ -183,8 +176,14 @@ export function generateSteps(
       });
 
       // Step: Top to Left Side
+      // Top is the natural anchor for any orphaned face-frame parts in the
+      // no-divider flow: bare "Face Frame" parent panels (un-split bookcase FF)
+      // and FF Divider (ICB) pieces if they ever appear without a vertical
+      // division (e.g. when ICBs anchor to fixed shelves instead).
       const topKeys: GroupKey[] = ["Top"];
       if (has("Face Frame - Top")) topKeys.push("Face Frame - Top");
+      if (has("Face Frame - Divider")) topKeys.push("Face Frame - Divider");
+      if (has("Face Frame")) topKeys.push("Face Frame");
       addStep(topKeys, "Attach the top panel to the left side.", {
         usesFittings: true,
         helpers: [
@@ -200,6 +199,8 @@ export function generateSteps(
       const topLeftKeys: GroupKey[] = ["Top", "Left Side"];
       if (has("Face Frame - Top")) topLeftKeys.push("Face Frame - Top");
       if (has("Face Frame - Left")) topLeftKeys.push("Face Frame - Left");
+      if (has("Face Frame - Divider")) topLeftKeys.push("Face Frame - Divider");
+      if (has("Face Frame")) topLeftKeys.push("Face Frame");
 
       addStep(topLeftKeys, "Attach the top panel to the left side.", {
         usesFittings: true,
@@ -307,11 +308,15 @@ export function generateSteps(
     }
 
     // ── Divider + Top + Face Frame Top/Divider ──
+    // ICB (Face Frame - Divider) anchors to the Vertical Division panels,
+    // UCB (Face Frame - Top) anchors to the Top panel — both attach in this
+    // step before the inner structure is connected. The bare "Face Frame"
+    // group catches any un-split parent face-frame panel so it is never
+    // orphaned to the end of the guide.
     const dividerTopKeys: GroupKey[] = ["Vertical Division", "Top"];
     if (has("Face Frame - Top")) dividerTopKeys.push("Face Frame - Top");
     if (has("Face Frame - Divider")) dividerTopKeys.push("Face Frame - Divider");
-    if (has("Face Frame") && faceFrameKeys.length === 0)
-      dividerTopKeys.push("Face Frame");
+    if (has("Face Frame")) dividerTopKeys.push("Face Frame");
     {
       // Build contextual helper text based on which parts actually exist
       let beforeTighteningContent: string;
