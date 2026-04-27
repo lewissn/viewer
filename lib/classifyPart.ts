@@ -82,8 +82,12 @@ export function classifyPart(name: string): Classification {
   if (norm.startsWith("top face frame")) return { groupKey: "Face Frame - Top" };
   if (norm.startsWith("divider face frame")) return { groupKey: "Face Frame - Divider" };
 
-  // 4) BACK PLINTH — must come before generic Back and Plinth checks
-  if (norm.startsWith("back plinth")) return { groupKey: "Plinth" };
+  // 4) BACK / REAR PLINTH — must come before generic Back, Rear and Plinth checks
+  // Both "Back Plinth" and "Rear Plinth" are plinths fitted at the rear and
+  // assembled with the standard plinth onto the bottom panel.
+  if (norm.startsWith("back plinth") || norm.startsWith("rear plinth")) {
+    return { groupKey: "Plinth" };
+  }
 
   // 5) BACK VARIANTS — exclude anything with "plinth" token
   if (!hasToken(norm, "plinth")) {
