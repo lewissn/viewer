@@ -116,7 +116,16 @@ export default function ProjectClient({ project }: Props) {
       });
 
       viewerRef.current = embeddedViewer;
-      embeddedViewer.LoadModelFromUrlList([cabinet.modelFileUrl]);
+      // Load the model alongside any associated texture/material files so
+      // patterned cabinets render with their correct surface (e.g. .3ds
+      // exports reference external bitmap files).
+      const textureUrls = (cabinet.textureFileUrls ?? []).filter(
+        (u) => u && u.trim().length > 0
+      );
+      embeddedViewer.LoadModelFromUrlList([
+        cabinet.modelFileUrl,
+        ...textureUrls,
+      ]);
       setActiveCabinetId(cabinet.cabinetId);
     },
     []

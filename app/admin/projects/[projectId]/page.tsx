@@ -370,6 +370,34 @@ export default function ProjectEditorPage() {
                     />
                   </div>
 
+                  {/* Texture File URLs */}
+                  <div className="mb-3">
+                    <label className="block text-[12px] font-medium text-[#86868b] mb-1">
+                      Texture File URLs (optional, one per line)
+                    </label>
+                    <textarea
+                      value={(cab.textureFileUrls ?? []).join("\n")}
+                      onChange={(e) =>
+                        updateCabinet(cab.cabinetId, {
+                          textureFileUrls: e.target.value
+                            .split("\n")
+                            .map((u) => u.trim())
+                            .filter((u) => u.length > 0),
+                        })
+                      }
+                      placeholder={
+                        "https://example.com/wood-grain.jpg\nhttps://example.com/edge.png"
+                      }
+                      rows={3}
+                      className="w-full rounded-lg border border-[#d2d2d7] bg-white px-3 py-2 text-[13px] text-[#1d1d1f] placeholder-[#86868b] outline-none transition-all focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 font-mono resize-none"
+                    />
+                    <p className="mt-1 text-[11px] text-[#86868b]">
+                      Add any texture/material files (.jpg, .png, .bmp)
+                      referenced by the .3ds model. Leave empty for flat-colour
+                      cabinets.
+                    </p>
+                  </div>
+
                   {/* ERP CSV URL */}
                   <div className="mb-3">
                     <label className="block text-[12px] font-medium text-[#86868b] mb-1">
