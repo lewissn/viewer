@@ -22,6 +22,13 @@ export interface CabinetInstance {
   cabinetIndex: number;
   /** URL to the per-cabinet model file (GLB/3DS) */
   modelFileUrl?: string;
+  /**
+   * Optional texture/material file URLs for the model (e.g. .jpg/.png/.bmp
+   * referenced by a .3ds export). Loaded alongside the model so any
+   * patterned/textured surfaces render correctly. Empty or omitted for
+   * flat-colour models.
+   */
+  textureFileUrls?: string[];
   /** URL to the ERP CSV file for this cabinet */
   erpCsvUrl?: string;
   /** Part names from ERP for this cabinet instance */
