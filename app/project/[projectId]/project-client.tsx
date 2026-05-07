@@ -11,6 +11,7 @@ import type { StepHelper } from "@/lib/assemblyGuides";
 import { buildProjectNavigation } from "@/lib/navigation";
 import { DesktopSidebar, MobileNav } from "@/app/assembly/side-nav";
 import { useTheme } from "@/lib/theme-context";
+import { TermAwareText } from "./term-aware-text";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -36,6 +37,20 @@ export default function ProjectClient({ project }: Props) {
     activeSteps: [],
     isAnimating: false,
   });
+  // Pending resume offer — set after a cabinet loads if we find a saved step.
+  const [resumeStep, setResumeStep] = useState<number | null>(null);
+
+  // Tapped-part info chip (read-only; does not change step highlights).
+  const [tappedPart, setTappedPart] = useState<{
+    name: string;
+    width: number;
+    height: number;
+    depth: number;
+  } | null>(null);
+
+  // localStorage key for per-cabinet progress
+  const progressKey = (cabinetId: string) =>
+    `assembly-progress:v1:${project.projectId}:${cabinetId}`;
 
   // Find active cabinet from URL params
   const cabinetParam = searchParams.get("cabinet");
@@ -70,6 +85,8 @@ export default function ProjectClient({ project }: Props) {
       setLoading(true);
       setLoadError("");
       setWizardOpen(true);
+      setResumeStep(null);
+      setTappedPart(null);
       setState({
         currentStep: -1,
         totalSteps: 0,
@@ -84,6 +101,28 @@ export default function ProjectClient({ project }: Props) {
 
       controller.subscribe((newState) => {
         setState({ ...newState });
+        // Persist progress whenever the step advances (skip intro/complete).
+        try {
+          if (
+            typeof window !== "undefined" &&
+            newState.currentStep >= 0 &&
+            newState.currentStep < newState.totalSteps
+          ) {
+            localStorage.setItem(
+              progressKey(cabinet.cabinetId),
+              JSON.stringify({ step: newState.currentStep })
+            );
+          } else if (
+            typeof window !== "undefined" &&
+            newState.totalSteps > 0 &&
+            newState.currentStep >= newState.totalSteps
+          ) {
+            // Build complete — clear saved progress so the next visit is fresh.
+            localStorage.removeItem(progressKey(cabinet.cabinetId));
+          }
+        } catch {
+          // localStorage unavailable (private mode, quota) — non-critical.
+        }
       });
 
       const isDark =
@@ -106,6 +145,25 @@ export default function ProjectClient({ project }: Props) {
             OV,
             cabinet.guideOverrides
           );
+          // Offer to resume if we have a valid saved step for this cabinet.
+          try {
+            if (typeof window !== "undefined") {
+              const raw = localStorage.getItem(progressKey(cabinet.cabinetId));
+              if (raw) {
+                const parsed = JSON.parse(raw) as { step?: number };
+                const totalSteps = controller.getState().totalSteps;
+                if (
+                  typeof parsed.step === "number" &&
+                  parsed.step >= 0 &&
+                  parsed.step < totalSteps
+                ) {
+                  setResumeStep(parsed.step);
+                }
+              }
+            }
+          } catch {
+            // Bad JSON or storage error — silently skip.
+          }
         },
         onModelLoadFailed: () => {
           setLoading(false);
@@ -116,6 +174,45 @@ export default function ProjectClient({ project }: Props) {
       });
 
       viewerRef.current = embeddedViewer;
+
+      // Tap-to-identify: tapping a part shows its name + dimensions.
+      // Does NOT change the step highlight — this is read-only.
+      const inner = embeddedViewer.GetViewer();
+      inner.SetMouseClickHandler(
+        (button: number, mouseCoords: { x: number; y: number }) => {
+          if (button !== 1) return;
+          const ud = inner.GetMeshUserDataUnderMouse(
+            OV.IntersectionMode.MeshOnly,
+            mouseCoords
+          );
+          if (!ud?.originalMeshInstance) {
+            setTappedPart(null);
+            return;
+          }
+          const mi = ud.originalMeshInstance;
+          const name =
+            mi.node?.GetName?.() ||
+            mi.GetMesh?.()?.GetName?.() ||
+            "Unknown part";
+          let width = 0,
+            height = 0,
+            depth = 0;
+          try {
+            const box = OV.GetBoundingBox(mi);
+            if (box) {
+              const min = box.GetMin();
+              const max = box.GetMax();
+              width = Math.round(Math.abs(max.x - min.x));
+              height = Math.round(Math.abs(max.y - min.y));
+              depth = Math.round(Math.abs(max.z - min.z));
+            }
+          } catch {
+            // Bounding box may fail on degenerate meshes.
+          }
+          setTappedPart({ name, width, height, depth });
+        }
+      );
+
       // Load the model alongside any associated texture/material files so
       // patterned cabinets render with their correct surface (e.g. .3ds
       // exports reference external bitmap files).
@@ -188,6 +285,25 @@ export default function ProjectClient({ project }: Props) {
   function handleReopen() {
     controllerRef.current?.restart();
     setWizardOpen(true);
+  }
+
+  function handleResume() {
+    if (resumeStep == null) return;
+    controllerRef.current?.jumpToStep(resumeStep);
+    setResumeStep(null);
+  }
+
+  function handleStartOver() {
+    if (activeCabinet) {
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(progressKey(activeCabinet.cabinetId));
+        }
+      } catch {
+        // Non-critical
+      }
+    }
+    setResumeStep(null);
   }
 
   // ── Derived state ──
@@ -490,6 +606,70 @@ export default function ProjectClient({ project }: Props) {
           </div>
         )}
 
+        {/* Tapped-part info chip — shows name + dimensions of the last tapped part.
+            Sits below the top bar so it doesn't fight with the bottom wizard.
+            Hidden while the resume banner is showing to avoid stacking. */}
+        {tappedPart && !loading && !loadError && hasCabinet && resumeStep == null && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-2rem)] sm:max-w-md">
+            <div className="backdrop-blur-xl bg-[var(--card-bg)] rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-[var(--sidebar-border)]/50 px-4 py-2.5 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-[var(--foreground)] truncate">
+                  {tappedPart.name}
+                </p>
+                {(tappedPart.width > 0 ||
+                  tappedPart.height > 0 ||
+                  tappedPart.depth > 0) && (
+                  <p className="text-[11px] text-[var(--muted)]">
+                    {tappedPart.width} × {tappedPart.height} × {tappedPart.depth} mm
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setTappedPart(null)}
+                aria-label="Dismiss"
+                className="flex-shrink-0 w-7 h-7 rounded-full hover:bg-[var(--muted)]/15 flex items-center justify-center text-[var(--muted)] active:scale-90 transition-all"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Resume banner — appears at top after model loads if a saved step exists. */}
+        {resumeStep != null && !loading && !loadError && hasCabinet && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:max-w-md">
+            <div className="backdrop-blur-xl bg-[var(--card-bg)] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] border border-[var(--sidebar-border)]/50 px-4 py-3 flex items-center gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)]/10 flex items-center justify-center">
+                <svg className="w-4 h-4 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1018 0 9 9 0 00-18 0zm9-5v5l3 2" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-[var(--foreground)] leading-tight">
+                  Continue from step {resumeStep + 1}?
+                </p>
+                <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                  We saved your progress on this cabinet.
+                </p>
+              </div>
+              <button
+                onClick={handleStartOver}
+                className="text-[12px] font-medium text-[var(--muted)] hover:text-[var(--foreground)] transition-colors px-2 py-1.5"
+              >
+                Start over
+              </button>
+              <button
+                onClick={handleResume}
+                className="text-[12px] font-medium text-white bg-[var(--accent)] rounded-full px-3 py-1.5 hover:opacity-90 transition-opacity active:scale-95"
+              >
+                Resume
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Wizard modal */}
         {wizardOpen && !loading && !loadError && hasCabinet && (
           <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[360px] sm:max-w-[420px]">
@@ -610,9 +790,9 @@ export default function ProjectClient({ project }: Props) {
                     <p className="text-[12px] text-[var(--muted)] mb-1">
                       Step {stepIndex + 1} of {state.totalSteps}
                     </p>
-                    <p className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2">
+                    <TermAwareText className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2 block">
                       {currentStepData.copy}
-                    </p>
+                    </TermAwareText>
 
                     {/* Fittings reference */}
                     {currentStepData.usesFittings && hasFittings && (
@@ -805,9 +985,9 @@ function HelperAccordion({ helper }: { helper: StepHelper }) {
         <span className="font-medium">{helper.title}</span>
       </button>
       {open && (
-        <p className="text-[12px] text-[var(--muted)] leading-relaxed pl-[18px] pb-2">
+        <TermAwareText className="text-[12px] text-[var(--muted)] leading-relaxed pl-[18px] pb-2 block">
           {helper.content}
-        </p>
+        </TermAwareText>
       )}
     </div>
   );
