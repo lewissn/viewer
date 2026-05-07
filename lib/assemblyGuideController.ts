@@ -647,6 +647,27 @@ export class AssemblyGuideController {
     }
   }
 
+  /**
+   * Re-frame the camera onto whatever is currently visible.
+   * Called after each step transition so the user always sees the
+   * active build area without having to manually orbit/zoom — particularly
+   * helpful on mobile where pinch-zoom precision is poor.
+   *
+   * Uses the viewer's built-in visible-only bounding sphere; as parts are
+   * hidden/shown across steps, the framed area naturally tightens onto
+   * the active build region.
+   */
+  private frameVisibleParts(animate = true) {
+    try {
+      const sphere = this.viewerEngine?.GetBoundingSphere?.(false);
+      if (sphere && typeof sphere.GetRadius === "function" && sphere.GetRadius() > 0) {
+        this.viewerEngine.FitSphereToWindow?.(sphere, animate);
+      }
+    } catch {
+      // Camera-fit is non-critical — model still renders without it.
+    }
+  }
+
   // ── Part lookup ──
 
   /** First drawer index from drawer box parts (e.g. "[2]_1") */
@@ -998,6 +1019,8 @@ export class AssemblyGuideController {
       this._currentStep = this._activeSteps.length;
       this.clearHighlight();
       this.showAllParts();
+      // Frame the whole completed cabinet.
+      this.frameVisibleParts(true);
       this.notifyListeners();
       return;
     }
@@ -1026,6 +1049,9 @@ export class AssemblyGuideController {
       currentStepIndex: nextStep,
     });
 
+    // Re-frame to the active build region before animating in the new parts.
+    this.frameVisibleParts(true);
+
     await this.animateAssembleStep(step);
 
     this.markStepAssembled(step);
@@ -1053,6 +1079,7 @@ export class AssemblyGuideController {
       }
       this.clearHighlight();
       this.showAllParts();
+      this.frameVisibleParts(true);
       this.renderViewer();
       this.notifyListeners();
       return;
@@ -1083,6 +1110,7 @@ export class AssemblyGuideController {
           : undefined,
       currentStepIndex: targetStep,
     });
+    this.frameVisibleParts(true);
     this.renderViewer();
     this.notifyListeners();
   }
@@ -1096,6 +1124,53 @@ export class AssemblyGuideController {
     }
     this.clearHighlight();
     this.showAllParts();
+    this.frameVisibleParts(true);
+    this.renderViewer();
+    this.notifyListeners();
+  }
+
+  /**
+   * Fast-forward (or rewind) to a specific step without animation.
+   * Used to restore a saved session — places the model in the exact state
+   * it would be in if the user had stepped through to `targetStep`.
+   * If `targetStep` is out of range, behaves like restart().
+   */
+  jumpToStep(targetStep: number) {
+    if (this._isAnimating) return;
+    if (
+      targetStep < 0 ||
+      targetStep >= this._activeSteps.length ||
+      this._activeSteps.length === 0
+    ) {
+      this.restart();
+      return;
+    }
+
+    // Reset and replay deterministically (no animation) up to the target.
+    this._assembledKeys.clear();
+    this.applyExplodedToAll();
+    this.clearHighlight();
+
+    for (let i = 0; i <= targetStep; i++) {
+      const step = this._activeSteps[i];
+      const parts = this.getPartsForStep(step);
+      for (const part of parts) {
+        this.applyAssembledToPart(part);
+      }
+      this.markStepAssembled(step);
+    }
+
+    this._currentStep = targetStep;
+    const targetStepData = this._activeSteps[targetStep];
+    this.applyHighlightDim(targetStepData);
+    this.applyVisibility(targetStepData.prefixes, {
+      drawerMode: targetStepData.drawerMode,
+      currentPartNames:
+        targetStepData.drawerMode === "assembleFirst"
+          ? new Set(this.getPartsForStep(targetStepData).map((p) => p.name))
+          : undefined,
+      currentStepIndex: targetStep,
+    });
     this.renderViewer();
     this.notifyListeners();
   }
