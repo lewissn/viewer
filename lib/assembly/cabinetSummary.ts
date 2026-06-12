@@ -28,7 +28,7 @@ export interface CabinetBuildSummary {
 export function buildCabinetSummary(
   detectedGroups: string[],
   groupCounts: Record<string, number>,
-  flags: { bottomOverlaysSides?: boolean } = {}
+  flags: { bottomOverlaysSides?: boolean; topOverlaysSides?: boolean } = {}
 ): CabinetBuildSummary {
   const has = (key: string) => detectedGroups.includes(key);
   const count = (key: string) => groupCounts[key] ?? 0;
@@ -53,6 +53,7 @@ export function buildCabinetSummary(
   const fixedShelfCount = count("Fixed Shelf");
   const hasRearBrace = has("Rear Brace");
   const overlayBottom = flags.bottomOverlaysSides ?? false;
+  const overlayTop = flags.topOverlaysSides ?? false;
 
   // ── Features ──
 
@@ -82,6 +83,9 @@ export function buildCabinetSummary(
   if (overlayBottom) {
     features.push({ label: "Overlay Bottom" });
   }
+  if (overlayTop) {
+    features.push({ label: "Overlay Top" });
+  }
 
   // ── Build Time Estimate ──
 
@@ -92,6 +96,7 @@ export function buildCabinetSummary(
   if (hasDrawers) minutes += 15;
   if (hasFaceFrames) minutes += 10;
   if (overlayBottom) minutes += 10;
+  if (overlayTop) minutes += 10;
 
   // ── Difficulty ──
 
@@ -101,6 +106,7 @@ export function buildCabinetSummary(
   if (hasDrawers) score++;
   if (hasFaceFrames) score++;
   if (overlayBottom) score++;
+  if (overlayTop) score++;
 
   const difficulty: CabinetBuildSummary["difficulty"] =
     score <= 1 ? "Easy" : score <= 3 ? "Moderate" : "Advanced";
@@ -116,6 +122,11 @@ export function buildCabinetSummary(
   } else {
     notes.push(
       "Build with front edges facing the floor. Stand upright once the back is fitted."
+    );
+  }
+  if (overlayTop) {
+    notes.push(
+      "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
     );
   }
   if (dividerCount > 0) {

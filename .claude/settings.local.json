@@ -7,7 +7,9 @@
       "Bash(gh auth:*)",
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell($tmp = \"$env:TEMP\\\\stepgen-test\"; New-Item -ItemType Directory -Force $tmp | Out-Null; npx tsc lib/assembly/stepGenerator.ts --outDir $tmp --module commonjs --target es2020 --skipLibCheck 2>&1 | Select-Object -First 5; Get-ChildItem $tmp -Recurse -Name)"
     ]
   }
 }
