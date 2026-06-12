@@ -9,6 +9,7 @@
  * - Face frames: early (cam access)
  * - Rear brace: after back
  * - Overlay bottom (upper unit): base step after sides when flag set
+ * - Overlay top: top step after back but before rear brace / wall bar when flag set
  * - Drawers: separate step, not in carcass
  */
 
@@ -19,6 +20,8 @@ export type GroupKey = string;
 export interface CabinetFlags {
   /** Upper unit / dresser: bottom overlays sides, must be fitted AFTER sides */
   bottomOverlaysSides?: boolean;
+  /** Top overlays sides: top must be fitted LAST, after the back but before the wall bar */
+  topOverlaysSides?: boolean;
 }
 
 export interface AssemblyStepBlock {
@@ -84,6 +87,7 @@ export function generateSteps(
   if (has("Drawer")) drawerKeys.push("Drawer");
 
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
+  const topOverlaysSides = flags.topOverlaysSides ?? false;
   const hasDivider = has("Vertical Division");
 
   // Helper: add step with optional meta
@@ -180,17 +184,41 @@ export function generateSteps(
       // no-divider flow: bare "Face Frame" parent panels (un-split bookcase FF)
       // and FF Divider (ICB) pieces if they ever appear without a vertical
       // division (e.g. when ICBs anchor to fixed shelves instead).
-      const topKeys: GroupKey[] = ["Top"];
-      if (has("Face Frame - Top")) topKeys.push("Face Frame - Top");
-      if (has("Face Frame - Divider")) topKeys.push("Face Frame - Divider");
-      if (has("Face Frame")) topKeys.push("Face Frame");
-      addStep(topKeys, "Attach the top panel to the left side.", {
+      // Skipped when the top overlays the sides — it gets its own step after
+      // the back, before the wall bar.
+      if (!topOverlaysSides) {
+        const topKeys: GroupKey[] = ["Top"];
+        if (has("Face Frame - Top")) topKeys.push("Face Frame - Top");
+        if (has("Face Frame - Divider")) topKeys.push("Face Frame - Divider");
+        if (has("Face Frame")) topKeys.push("Face Frame");
+        addStep(topKeys, "Attach the top panel to the left side.", {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Before tightening",
+              content:
+                "With the structure still front-edge-down, position the top panel onto the left side and lock the cams. Ensure edges are flush before tightening.",
+            },
+          ],
+        });
+      }
+    } else if (topOverlaysSides) {
+      // No bottom panel + overlay top: anchor on the left side alone.
+      const leftKeys: GroupKey[] = ["Left Side"];
+      if (has("Face Frame - Left")) leftKeys.push("Face Frame - Left");
+
+      addStep(leftKeys, "Lay the left side panel down to start the build.", {
         usesFittings: true,
         helpers: [
           {
+            title: "Getting started",
+            content:
+              "Lay the left side panel flat with the front edge facing the floor. The top panel overlays the sides on this unit, so it is fitted at the end — not now.",
+          },
+          {
             title: "Before tightening",
             content:
-              "With the structure still front-edge-down, position the top panel onto the left side and lock the cams. Ensure edges are flush before tightening.",
+              "Insert all Rafix cam screws and tap cams into place before connecting. Do not over-tighten — snug is sufficient.",
           },
         ],
       });
@@ -313,18 +341,25 @@ export function generateSteps(
     // step before the inner structure is connected. The bare "Face Frame"
     // group catches any un-split parent face-frame panel so it is never
     // orphaned to the end of the guide.
-    const dividerTopKeys: GroupKey[] = ["Vertical Division", "Top"];
-    if (has("Face Frame - Top")) dividerTopKeys.push("Face Frame - Top");
+    // When the top overlays the sides, it (and its face frame) is excluded
+    // here — it gets its own step after the back, before the wall bar.
+    const dividerTopKeys: GroupKey[] = ["Vertical Division"];
+    if (!topOverlaysSides) dividerTopKeys.push("Top");
+    if (!topOverlaysSides && has("Face Frame - Top"))
+      dividerTopKeys.push("Face Frame - Top");
     if (has("Face Frame - Divider")) dividerTopKeys.push("Face Frame - Divider");
     if (has("Face Frame")) dividerTopKeys.push("Face Frame");
     {
       // Build contextual helper text based on which parts actually exist
       let beforeTighteningContent: string;
       if (hasDivider) {
-        const structureParts = ["the top"];
-        if (hasBottom) structureParts.push("bottom");
+        const structureParts: string[] = [];
+        if (!topOverlaysSides) structureParts.push("the top");
+        if (hasBottom) structureParts.push(topOverlaysSides ? "the bottom" : "bottom");
         structureParts.push("divider(s)");
-        beforeTighteningContent = `With the front edges facing the floor, connect ${structureParts.join(", ")} to form the inner structure. Ensure the divider is flush with the top edge before locking cams.`;
+        beforeTighteningContent = topOverlaysSides
+          ? `With the front edges facing the floor, connect ${structureParts.join(", ")} to form the inner structure. The top panel overlays the sides on this unit and is fitted at the end — not now.`
+          : `With the front edges facing the floor, connect ${structureParts.join(", ")} to form the inner structure. Ensure the divider is flush with the top edge before locking cams.`;
       } else {
         beforeTighteningContent =
           "With the front edges facing the floor, position the top panel and lock the cams.";
@@ -343,15 +378,21 @@ export function generateSteps(
             "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
         });
       }
-      addStep(
-        dividerTopKeys,
-        dividerTopKeys.some((k) => k.startsWith("Face Frame"))
+      const hasFFInStep = dividerTopKeys.some((k) => k.startsWith("Face Frame"));
+      const dividerTopCopy = topOverlaysSides
+        ? hasFFInStep
+          ? "Fit the divider(s), with their face frame pieces attached."
+          : "Fit the divider(s) to form the inner structure."
+        : hasFFInStep
           ? hasDivider
             ? "Fit the divider and top panel, with their face frame pieces attached."
             : "Fit the top panel, with the face frame piece attached."
           : hasDivider
             ? "Fit the divider and top panel to form the inner structure."
-            : "Fit the top panel.",
+            : "Fit the top panel.";
+      addStep(
+        dividerTopKeys,
+        dividerTopCopy,
         {
           usesFittings: true,
           helpers: dividerHelpers,
@@ -453,6 +494,37 @@ export function generateSteps(
       },
     ],
   });
+
+  // ── Overlay top (AFTER back, BEFORE rear brace / wall bar) ──
+  if (topOverlaysSides) {
+    const lateTopKeys: GroupKey[] = ["Top"];
+    if (has("Face Frame - Top")) lateTopKeys.push("Face Frame - Top");
+    // In the no-divider flow these orphaned face-frame parts would normally
+    // anchor to the early top step — keep them with the top when it moves late.
+    if (noDividerFlow) {
+      if (has("Face Frame - Divider")) lateTopKeys.push("Face Frame - Divider");
+      if (has("Face Frame")) lateTopKeys.push("Face Frame");
+    }
+    addStep(
+      lateTopKeys,
+      "Align and fix the top panel over the sides to close the structure.",
+      {
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Why this matters",
+            content:
+              "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place, but before the wall bar. Do not attempt to fit it earlier.",
+          },
+          {
+            title: "Before tightening",
+            content:
+              "Position the top panel so it sits flush over both side panels, check the front edges line up, then fix through the pre-drilled holes.",
+          },
+        ],
+      }
+    );
+  }
 
   // ── Rear brace (MUST be after Back) ──
   if (has("Rear Brace")) {

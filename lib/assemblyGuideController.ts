@@ -17,7 +17,7 @@ import type { AssemblyGuide, AssemblyStep } from "./assemblyGuides";
 import {
   classifyPart,
   extractDrawerIndex,
-  generateGuideFromParts,
+  generateGuideFromGroups,
 } from "./classifyPart";
 import type { GuideOverrides } from "./projects";
 import {
@@ -201,14 +201,36 @@ export class AssemblyGuideController {
     // Flag small meshes as fittings (cams, screws from 3DS exports)
     this.flagFittingsBySize();
 
+    // Split bare "Face Frame" parts into Left/Right/Top by geometry
+    // (dresser units have FF rails whose names don't say which panel they
+    // belong to — tall rails go with the sides, wide rails with the top)
+    this.refineFaceFrameGroups();
+
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
 
-    // Generate guide from panel parts only (exclude fittings)
-    const partNames = this.allParts
-      .filter((p) => !p.isFitting)
-      .map((p) => p.name);
-    const generated = generateGuideFromParts(partNames, overrides);
+    // Resolve overlay-top: explicit admin override wins, otherwise detect
+    // from the model geometry (top underside on/above the sides' top edges).
+    const topOverlaysSides =
+      overrides?.topOverlaysSides ?? this.detectTopOverlaysSides();
+    console.log(
+      `[AssemblyGuide] Top overlays sides: ${topOverlaysSides}`,
+      overrides?.topOverlaysSides !== undefined
+        ? "(admin override)"
+        : "(auto-detected)"
+    );
+    const effectiveOverrides: GuideOverrides = {
+      ...overrides,
+      topOverlaysSides,
+    };
+
+    // Generate guide from the resolved panel groups (fittings excluded).
+    // Groups come from the parts' (possibly geometry-refined) groupKeys, not
+    // from re-classifying names — so face-frame reassignment is preserved.
+    const groupSet = new Set(
+      this.allParts.filter((p) => !p.isFitting).map((p) => p.groupKey)
+    );
+    const generated = generateGuideFromGroups(groupSet, effectiveOverrides);
 
     console.log("[AssemblyGuide] Detected groups:", generated.detectedGroups);
 
@@ -223,7 +245,10 @@ export class AssemblyGuideController {
     this._cabinetSummary = buildCabinetSummary(
       generated.detectedGroups,
       groupCounts,
-      { bottomOverlaysSides: overrides?.bottomOverlaysSides }
+      {
+        bottomOverlaysSides: overrides?.bottomOverlaysSides,
+        topOverlaysSides,
+      }
     );
     this._detectedGroups = generated.detectedGroups;
 
@@ -407,6 +432,240 @@ export class AssemblyGuideController {
     } catch { /* fall through */ }
 
     return -1;
+  }
+
+  /**
+   * Compute a part's world-space axis-aligned bounding box by transforming
+   * the geometry bounding box corners through the mesh's world matrix.
+   * Returns null if geometry bounds cannot be determined.
+   */
+  private getPartWorldBounds(part: PartMesh): { min: Vec3; max: Vec3 } | null {
+    try {
+      const mesh = part.threeMesh;
+      const geom = mesh.geometry;
+      if (!geom) return null;
+      if (typeof geom.computeBoundingBox === "function") {
+        geom.computeBoundingBox();
+      }
+      const bb = geom.boundingBox;
+      if (!bb || !bb.min || !bb.max) return null;
+
+      if (typeof mesh.updateMatrixWorld === "function") {
+        mesh.updateMatrixWorld(true);
+      }
+      const e = mesh.matrixWorld?.elements;
+
+      const min: Vec3 = { x: Infinity, y: Infinity, z: Infinity };
+      const max: Vec3 = { x: -Infinity, y: -Infinity, z: -Infinity };
+
+      for (const x of [bb.min.x, bb.max.x]) {
+        for (const y of [bb.min.y, bb.max.y]) {
+          for (const z of [bb.min.z, bb.max.z]) {
+            let wx = x, wy = y, wz = z;
+            if (e && e.length === 16) {
+              wx = e[0] * x + e[4] * y + e[8] * z + e[12];
+              wy = e[1] * x + e[5] * y + e[9] * z + e[13];
+              wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+            } else {
+              // No world matrix — fall back to local position offset
+              wx = x + (mesh.position?.x ?? 0);
+              wy = y + (mesh.position?.y ?? 0);
+              wz = z + (mesh.position?.z ?? 0);
+            }
+            if (wx < min.x) min.x = wx; if (wx > max.x) max.x = wx;
+            if (wy < min.y) min.y = wy; if (wy > max.y) max.y = wy;
+            if (wz < min.z) min.z = wz; if (wz > max.z) max.z = wz;
+          }
+        }
+      }
+
+      if (!isFinite(min.x) || !isFinite(max.x)) return null;
+      return { min, max };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Union world bounds of all (non-fitting) parts in a classification group */
+  private getGroupWorldBounds(
+    groupKey: string
+  ): { min: Vec3; max: Vec3 } | null {
+    let result: { min: Vec3; max: Vec3 } | null = null;
+    for (const part of this.allParts) {
+      if (part.groupKey !== groupKey || part.isFitting) continue;
+      const b = this.getPartWorldBounds(part);
+      if (!b) continue;
+      if (!result) {
+        result = { min: { ...b.min }, max: { ...b.max } };
+      } else {
+        result.min.x = Math.min(result.min.x, b.min.x);
+        result.min.y = Math.min(result.min.y, b.min.y);
+        result.min.z = Math.min(result.min.z, b.min.z);
+        result.max.x = Math.max(result.max.x, b.max.x);
+        result.max.y = Math.max(result.max.y, b.max.y);
+        result.max.z = Math.max(result.max.z, b.max.z);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Detect whether the top panel overlays the side panels (sits ON TOP of
+   * their top edges) rather than being inset between them.
+   *
+   * Inset top:   sides run past the top's underside, flush with its top face.
+   * Overlay top: the top's underside rests on the sides' top edges.
+   *
+   * The vertical axis is not assumed — it is taken as the axis with the
+   * greatest centroid separation between the top panel and the sides, so the
+   * check works regardless of model up-axis (3DS Z-up vs GLB Y-up).
+   */
+  private detectTopOverlaysSides(): boolean {
+    const top = this.getGroupWorldBounds("Top");
+    const left = this.getGroupWorldBounds("Left Side");
+    const right = this.getGroupWorldBounds("Right Side");
+    if (!top || (!left && !right)) return false;
+
+    // Union of both sides (one side is enough if the other is missing)
+    const sides = {
+      min: {
+        x: Math.min(left?.min.x ?? Infinity, right?.min.x ?? Infinity),
+        y: Math.min(left?.min.y ?? Infinity, right?.min.y ?? Infinity),
+        z: Math.min(left?.min.z ?? Infinity, right?.min.z ?? Infinity),
+      },
+      max: {
+        x: Math.max(left?.max.x ?? -Infinity, right?.max.x ?? -Infinity),
+        y: Math.max(left?.max.y ?? -Infinity, right?.max.y ?? -Infinity),
+        z: Math.max(left?.max.z ?? -Infinity, right?.max.z ?? -Infinity),
+      },
+    };
+
+    const center = (b: { min: Vec3; max: Vec3 }, a: "x" | "y" | "z") =>
+      (b.min[a] + b.max[a]) / 2;
+
+    // Vertical axis = greatest top-vs-sides centroid separation
+    let upAxis: "x" | "y" | "z" = "y";
+    let best = -Infinity;
+    for (const a of ["x", "y", "z"] as const) {
+      const d = Math.abs(center(top, a) - center(sides, a));
+      if (d > best) {
+        best = d;
+        upAxis = a;
+      }
+    }
+
+    const thickness = top.max[upAxis] - top.min[upAxis];
+    if (!(thickness > 0) || !isFinite(thickness)) return false;
+
+    // Direction: the top may sit at either end of the detected axis
+    const overlay =
+      center(top, upAxis) >= center(sides, upAxis)
+        ? // Top at positive end: its underside should be at/above the sides' top edge
+          top.min[upAxis] > sides.max[upAxis] - thickness * 0.5
+        : // Top at negative end (flipped axis)
+          top.max[upAxis] < sides.min[upAxis] + thickness * 0.5;
+
+    log(
+      `Overlay-top detection: axis=${upAxis}, topRange=[${top.min[upAxis].toFixed(1)}, ${top.max[upAxis].toFixed(1)}], sidesRange=[${sides.min[upAxis].toFixed(1)}, ${sides.max[upAxis].toFixed(1)}], thickness=${thickness.toFixed(1)} -> ${overlay}`
+    );
+
+    return overlay;
+  }
+
+  /**
+   * Reassign bare "Face Frame" parts to Left/Right/Top subgroups by geometry.
+   *
+   * Dresser units have separate face-frame rails for the top and each side,
+   * but their names often don't say which panel they belong to, so name
+   * classification lumps them into one "Face Frame" group — which then
+   * assembles as a single U-shaped block on the top panel step.
+   *
+   * Shape disambiguates: a rail clearly elongated along the cabinet's
+   * vertical axis belongs to a side (left/right decided by which side panel
+   * it is nearest); a rail elongated along the width axis belongs to the
+   * top. Parts without a dominant direction (e.g. a genuine one-piece
+   * U-frame) are left in the bare group.
+   */
+  private refineFaceFrameGroups() {
+    const ffParts = this.allParts.filter(
+      (p) => p.groupKey === "Face Frame" && !p.isFitting
+    );
+    if (ffParts.length === 0) return;
+
+    const left = this.getGroupWorldBounds("Left Side");
+    const right = this.getGroupWorldBounds("Right Side");
+    if (!left || !right) return;
+
+    const axes = ["x", "y", "z"] as const;
+    type Axis = (typeof axes)[number];
+    const center = (b: { min: Vec3; max: Vec3 }, a: Axis) =>
+      (b.min[a] + b.max[a]) / 2;
+    const extent = (b: { min: Vec3; max: Vec3 }, a: Axis) =>
+      b.max[a] - b.min[a];
+
+    // Width axis = greatest separation between the two side panels
+    let widthAxis: Axis = "x";
+    let bestSep = -Infinity;
+    for (const a of axes) {
+      const d = Math.abs(center(left, a) - center(right, a));
+      if (d > bestSep) {
+        bestSep = d;
+        widthAxis = a;
+      }
+    }
+
+    // Up axis: of the two remaining axes, prefer the one with the greatest
+    // top-vs-sides centroid separation; fall back to the sides' longest extent.
+    const remaining = axes.filter((a) => a !== widthAxis);
+    const top = this.getGroupWorldBounds("Top");
+    const sidesUnion = {
+      min: {
+        x: Math.min(left.min.x, right.min.x),
+        y: Math.min(left.min.y, right.min.y),
+        z: Math.min(left.min.z, right.min.z),
+      },
+      max: {
+        x: Math.max(left.max.x, right.max.x),
+        y: Math.max(left.max.y, right.max.y),
+        z: Math.max(left.max.z, right.max.z),
+      },
+    };
+    let upAxis: Axis = remaining[0];
+    let bestUp = -Infinity;
+    for (const a of remaining) {
+      const d = top
+        ? Math.abs(center(top, a) - center(sidesUnion, a))
+        : extent(sidesUnion, a);
+      if (d > bestUp) {
+        bestUp = d;
+        upAxis = a;
+      }
+    }
+
+    const widthMid = (center(left, widthAxis) + center(right, widthAxis)) / 2;
+    const leftIsLower = center(left, widthAxis) < center(right, widthAxis);
+
+    for (const part of ffParts) {
+      const b = this.getPartWorldBounds(part);
+      if (!b) continue;
+      const uExt = extent(b, upAxis);
+      const wExt = extent(b, widthAxis);
+
+      if (uExt > 1.5 * wExt) {
+        // Tall rail → belongs to a side panel
+        const isLowerSide = center(b, widthAxis) < widthMid;
+        part.groupKey =
+          isLowerSide === leftIsLower ? "Face Frame - Left" : "Face Frame - Right";
+      } else if (wExt > 1.5 * uExt) {
+        // Wide rail → belongs to the top panel
+        part.groupKey = "Face Frame - Top";
+      }
+      // else: no dominant direction (one-piece U-frame) — leave as bare group
+
+      log(
+        `Face frame refine: "${part.name}" upExt=${uExt.toFixed(1)} widthExt=${wExt.toFixed(1)} -> ${part.groupKey}`
+      );
+    }
   }
 
   /**
@@ -740,20 +999,17 @@ export class AssemblyGuideController {
       const focusColor = new this.OV.RGBColor(0, 113, 227); // Apple blue
 
       if (this._dynamicMode) {
-        // assembleFirst: highlight only first drawer's parts
-        const highlightNames =
-          step.drawerMode === "assembleFirst"
-            ? new Set(this.getPartsForStep(step).map((p) => p.name))
-            : null;
-
+        // Match by mesh instance (not by re-classifying names) so parts whose
+        // group was refined geometrically (e.g. face-frame rails) highlight
+        // with their resolved group. Also covers drawer assembleFirst.
+        const focusInstances = new Set(
+          this.getPartsForStep(step).map(
+            (p) => p.threeMesh.userData?.originalMeshInstance
+          )
+        );
         this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
-          if (!userData?.originalMeshInstance) return false;
-          const mi = userData.originalMeshInstance;
-          const name =
-            mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-          if (highlightNames) return highlightNames.has(name);
-          const { groupKey } = classifyPart(name);
-          return step.prefixes.includes(groupKey);
+          const mi = userData?.originalMeshInstance;
+          return mi ? focusInstances.has(mi) : false;
         });
       } else {
         this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {

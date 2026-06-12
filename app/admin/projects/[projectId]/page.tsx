@@ -353,6 +353,40 @@ export default function ProjectEditorPage() {
                       Bottom overlays sides (upper unit)
                     </label>
                   </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <label
+                      htmlFor={`overlay-top-${cab.cabinetId}`}
+                      className="text-[12px] text-[#424245]"
+                    >
+                      Top overlays sides (fitted last, before wall bar):
+                    </label>
+                    <select
+                      id={`overlay-top-${cab.cabinetId}`}
+                      value={
+                        cab.guideOverrides?.topOverlaysSides === undefined
+                          ? "auto"
+                          : cab.guideOverrides.topOverlaysSides
+                            ? "yes"
+                            : "no"
+                      }
+                      onChange={(e) =>
+                        updateCabinet(cab.cabinetId, {
+                          guideOverrides: {
+                            ...cab.guideOverrides,
+                            topOverlaysSides:
+                              e.target.value === "auto"
+                                ? undefined
+                                : e.target.value === "yes",
+                          },
+                        })
+                      }
+                      className="rounded-lg border border-[#d2d2d7] bg-white px-2 py-1 text-[12px] text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+                    >
+                      <option value="auto">Auto-detect from model</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
 
                   {/* Model URL */}
                   <div className="mb-3">

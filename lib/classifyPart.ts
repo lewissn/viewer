@@ -186,25 +186,20 @@ export interface GeneratedGuide {
 }
 
 /**
- * Generate an assembly guide from a list of part names.
- * Uses the rule-based step generator for correct ordering.
+ * Generate an assembly guide from a set of already-resolved group keys.
+ * Use this when groups have been refined beyond name classification
+ * (e.g. geometric reassignment of bare face-frame parts).
  */
-export function generateGuideFromParts(
-  partNames: string[],
+export function generateGuideFromGroups(
+  groupSet: Set<string>,
   overrides?: GuideOverrides
 ): GeneratedGuide {
-  // Classify all parts and collect groups
-  const groupSet = new Set<string>();
-  for (const name of partNames) {
-    const { groupKey } = classifyPart(name);
-    groupSet.add(groupKey);
-  }
-
   const detectedGroups = Array.from(groupSet);
 
   // Generate steps via rule-based step generator
   const steps = generateSteps(groupSet, {
     bottomOverlaysSides: overrides?.bottomOverlaysSides,
+    topOverlaysSides: overrides?.topOverlaysSides,
   });
 
   // Build explode offsets (defaults + overrides)
@@ -224,4 +219,21 @@ export function generateGuideFromParts(
     explodeOffsets,
     detectedGroups,
   };
+}
+
+/**
+ * Generate an assembly guide from a list of part names.
+ * Uses the rule-based step generator for correct ordering.
+ */
+export function generateGuideFromParts(
+  partNames: string[],
+  overrides?: GuideOverrides
+): GeneratedGuide {
+  // Classify all parts and collect groups
+  const groupSet = new Set<string>();
+  for (const name of partNames) {
+    const { groupKey } = classifyPart(name);
+    groupSet.add(groupKey);
+  }
+  return generateGuideFromGroups(groupSet, overrides);
 }

@@ -13,6 +13,8 @@ export interface GuideOverrides {
   explodeOffsets?: Record<string, [number, number, number]>;
   /** Upper unit / dresser: bottom overlays sides, must be fitted AFTER sides */
   bottomOverlaysSides?: boolean;
+  /** Top overlays sides: top must be fitted LAST, after the back but before the wall bar */
+  topOverlaysSides?: boolean;
 }
 
 export interface CabinetInstance {
