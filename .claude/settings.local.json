@@ -9,7 +9,24 @@
       "Bash(git commit -m ':*)",
       "Bash(git push:*)",
       "PowerShell(npx tsc --noEmit 2>&1)",
-      "PowerShell($tmp = \"$env:TEMP\\\\stepgen-test\"; New-Item -ItemType Directory -Force $tmp | Out-Null; npx tsc lib/assembly/stepGenerator.ts --outDir $tmp --module commonjs --target es2020 --skipLibCheck 2>&1 | Select-Object -First 5; Get-ChildItem $tmp -Recurse -Name)"
+      "PowerShell($tmp = \"$env:TEMP\\\\stepgen-test\"; New-Item -ItemType Directory -Force $tmp | Out-Null; npx tsc lib/assembly/stepGenerator.ts --outDir $tmp --module commonjs --target es2020 --skipLibCheck 2>&1 | Select-Object -First 5; Get-ChildItem $tmp -Recurse -Name)",
+      "Bash(ls ~/Downloads 2>/dev/null | head -40; echo \"=== dropbox ===\"; ls ~/ 2>/dev/null | head -40)",
+      "Bash(npm install *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(node -e ' *)",
+      "Bash(SP=C:/Users/lewis/AppData/Local/Temp/claude/C--Users-lewis-viewer/92622db9-2ab7-4c15-a41b-f98f557aa9d6/scratchpad node -e ' *)",
+      "Bash(xargs grep -ln \"uploadToSignedUrl\")",
+      "Bash(grep -o \"uploadToSignedUrl\\(path, token, fileBody, fileOptions\\).\\\\{0,900\\\\}\" node_modules/@supabase/storage-js/dist/umd/supabase.js)",
+      "Bash(grep -o \"_uploadOrUpdate\\(method.\\\\{0,1600\\\\}\" node_modules/@supabase/storage-js/dist/umd/supabase.js)",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)",
+      "Bash(sed -i 's#\\\\.\\\\./\\\\.\\\\./\\\\.\\\\./\\\\.\\\\./\\\\.\\\\./\\\\.\\\\./viewer/lib#./lib#g' check.tmp.mts)",
+      "Bash(node check.tmp.mts \"C:/Users/lewis/Dropbox/CUSTOMERS/Sarah Culloty #11569\")",
+      "Bash(node .tmpcheck/check.mts \"C:/Users/lewis/Dropbox/CUSTOMERS/Sarah Culloty #11569\")",
+      "PowerShell($dest = \"C:\\\\Users\\\\lewis\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-lewis-viewer\\\\92622db9-2ab7-4c15-a41b-f98f557aa9d6\\\\scratchpad\\\\order.zip\"; if \\(Test-Path $dest\\) { Remove-Item $dest }; Compress-Archive -Path \"C:\\\\Users\\\\lewis\\\\Dropbox\\\\CUSTOMERS\\\\Sarah Culloty #11569\" -DestinationPath $dest; \\(Get-Item $dest\\).Length)",
+      "Bash(export SP=\"C:/Users/lewis/AppData/Local/Temp/claude/C--Users-lewis-viewer/92622db9-2ab7-4c15-a41b-f98f557aa9d6/scratchpad\")",
+      "Bash(node -e \"const s=require\\('fs'\\).existsSync;console.log\\('env.local:',s\\('.env.local'\\)\\)\")",
+      "Bash(npm run *)"
     ]
   }
 }
