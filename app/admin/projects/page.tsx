@@ -125,11 +125,30 @@ export default function AdminProjectsPage() {
           </Link>
         </div>
 
+        {/* Import folder — the fast path for a normal order */}
+        <Link
+          href="/admin/projects/import"
+          className="mb-6 block bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-6 transition-all hover:shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.1)] active:scale-[0.99]"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[#1d1d1f]">
+                Import Order Folder
+              </h2>
+              <p className="mt-1 text-[14px] text-[#86868b]">
+                Drop in the customer folder or a zip — cabinets, parts, fittings
+                and textures are sorted out automatically
+              </p>
+            </div>
+            <span className="text-[20px] text-[#86868b] ml-4 shrink-0">&rarr;</span>
+          </div>
+        </Link>
+
         {/* Create project card */}
-        <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8 mb-8">
-          <h2 className="text-[17px] font-semibold text-[#1d1d1f] mb-6">
-            Create New Project
-          </h2>
+        <details className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8 mb-8">
+          <summary className="text-[17px] font-semibold text-[#1d1d1f] mb-6 cursor-pointer">
+            Create Project Manually
+          </summary>
 
           <form onSubmit={handleCreate} className="space-y-5">
             <div>
@@ -216,7 +235,7 @@ export default function AdminProjectsPage() {
               </div>
             </div>
           )}
-        </div>
+        </details>
 
         {/* Existing Projects */}
         <div className="bg-white rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_12px_rgba(0,0,0,0.06)] p-8">

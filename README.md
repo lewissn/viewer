@@ -1,5 +1,21 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Order folder import
+
+`/admin/projects/import` builds a customer assembly guide from a whole order
+folder (or a zip of one) in a single step. A cabinet is detected as a model file
+plus a CSV sharing its name, with textures from a folder of the same name —
+`TDB LHS.3ds` + `TDB LHS.CSV` + `TDB LHS/`. Everything else in the folder (the
+whole-project model, `.pb-proj`, PDFs) is skipped and listed with a reason.
+
+Setup, once per environment:
+
+1. Run `supabase/migrations/002_project_files_storage.sql` to create the
+   public `project-files` storage bucket.
+2. Set `NEXT_PUBLIC_SUPABASE_ANON_KEY` — the browser uploads models straight to
+   Storage using signed tokens minted by `/api/projects/storage/sign-upload`,
+   which keeps large `.3ds` files clear of the serverless request size limit.
+
 ## Getting Started
 
 First, run the development server:
