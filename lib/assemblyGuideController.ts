@@ -230,7 +230,15 @@ export class AssemblyGuideController {
     const groupSet = new Set(
       this.allParts.filter((p) => !p.isFitting).map((p) => p.groupKey)
     );
-    const generated = generateGuideFromGroups(groupSet, effectiveOverrides);
+    const groupCounts: Record<string, number> = {};
+    for (const [key, parts] of this.partGroups) {
+      groupCounts[key] = parts.length;
+    }
+    const generated = generateGuideFromGroups(
+      groupSet,
+      effectiveOverrides,
+      groupCounts
+    );
 
     console.log("[AssemblyGuide] Detected groups:", generated.detectedGroups);
 
@@ -238,10 +246,6 @@ export class AssemblyGuideController {
     this.computeExplodedPositionsDynamic(generated.explodeOffsets);
 
     // Build cabinet summary from detected groups
-    const groupCounts: Record<string, number> = {};
-    for (const [key, parts] of this.partGroups) {
-      groupCounts[key] = parts.length;
-    }
     this._cabinetSummary = buildCabinetSummary(
       generated.detectedGroups,
       groupCounts,

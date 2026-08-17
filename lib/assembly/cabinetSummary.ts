@@ -135,7 +135,15 @@ export function buildCabinetSummary(
     );
   }
   if (fixedShelfCount > 0) {
-    notes.push("Fixed shelves must be installed before side panels.");
+    // Mirrors the step generator's shelves-before-top rule: only a bottom-up
+    // build with an inset top actually encloses the inner column(s).
+    if (dividerCount >= 2 && has("Top") && !overlayBottom && !overlayTop) {
+      notes.push(
+        `${dividerCount} dividers make ${dividerCount + 1} columns — fit every fixed shelf before the top panel, or the inner column(s) will be sealed shut.`
+      );
+    } else {
+      notes.push("Fixed shelves must be installed before side panels.");
+    }
   }
   if (hasFaceFrames) {
     notes.push(

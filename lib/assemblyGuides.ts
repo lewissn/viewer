@@ -62,8 +62,12 @@ export const ASSEMBLY_GUIDES: Record<string, AssemblyGuide> = {
         copy: "Connect the bottom and plinth panels.",
       },
       {
-        prefixes: ["Vertical Division", "Top"],
-        copy: "Fit the divider and top panel.",
+        prefixes: ["Vertical Division"],
+        copy: "Connect the divider(s) to the bottom panel.",
+      },
+      {
+        prefixes: ["Top"],
+        copy: "Attach the top panel over the divider(s) to complete the inner structure.",
       },
       {
         prefixes: ["Left Side", "Right Side"],

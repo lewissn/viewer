@@ -4,8 +4,9 @@
  * Generates assembly steps dynamically based on which panel groups exist
  * in the cabinet model. Handles:
  * - No-divider flow: sequential side-by-side assembly (Left Side anchors the build)
- * - Divider flow: inner structure first, then sides
+ * - Divider flow: bottom, then dividers, then top, then sides
  * - Fixed shelves: before sides/right side (access constraint)
+ * - Fixed shelves with 2+ dividers: before the top (inner columns get enclosed)
  * - Face frames: early (cam access)
  * - Rear brace: after back
  * - Overlay bottom (upper unit): base step after sides when flag set
@@ -22,6 +23,13 @@ export interface CabinetFlags {
   bottomOverlaysSides?: boolean;
   /** Top overlays sides: top must be fitted LAST, after the back but before the wall bar */
   topOverlaysSides?: boolean;
+  /**
+   * Number of vertical divider panels. 2+ dividers means 3+ columns, and the
+   * inner column(s) are enclosed once the top goes on — so their fixed shelves
+   * have to be fitted before the top panel, not after. Defaults to 1 when
+   * dividers are present but no count was supplied.
+   */
+  dividerCount?: number;
 }
 
 export interface AssemblyStepBlock {
@@ -64,6 +72,7 @@ export function generateSteps(
   }
 
   const hasBottom = has("Bottom");
+  const hasTop = has("Top");
   const hasPlinth = has("Plinth");
   const hasFixedShelf = has("Fixed Shelf");
   const hasFaceFrames =
@@ -89,6 +98,7 @@ export function generateSteps(
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
   const topOverlaysSides = flags.topOverlaysSides ?? false;
   const hasDivider = has("Vertical Division");
+  const dividerCount = hasDivider ? Math.max(1, flags.dividerCount ?? 1) : 0;
 
   // Helper: add step with optional meta
   function addStepWithMeta(
@@ -144,8 +154,12 @@ export function generateSteps(
   // ── CARCASS ASSEMBLY ──
   // Two flows based on whether the cabinet has vertical dividers:
   // - No-divider flow: sequential side-by-side assembly (Left Side anchors the build)
-  // - Divider flow: inner structure (bottom + dividers + top) first, then both sides
+  // - Divider flow: base, then dividers, then top, then both sides
   const noDividerFlow = !hasDivider && !bottomOverlaysSides;
+
+  // Face-frame parts the carcass flow could not anchor to an early step; the
+  // late overlay-top step picks these up so they never fall to the end.
+  const orphanFFKeys: GroupKey[] = [];
 
   if (noDividerFlow) {
     // ── No-divider flow ──
@@ -296,7 +310,7 @@ export function generateSteps(
     );
   } else {
     // ── Divider / upper-unit flow ──
-    // Inner structure first (bottom + dividers + top), then both sides together.
+    // Base, then dividers, then top, then both sides together.
 
     // Base step (Bottom + Plinth) — only for non-overlay units
     if (!bottomOverlaysSides && (hasBottom || hasPlinth)) {
@@ -335,83 +349,148 @@ export function generateSteps(
       });
     }
 
-    // ── Divider + Top + Face Frame Top/Divider ──
-    // ICB (Face Frame - Divider) anchors to the Vertical Division panels,
-    // UCB (Face Frame - Top) anchors to the Top panel — both attach in this
-    // step before the inner structure is connected. The bare "Face Frame"
-    // group catches any un-split parent face-frame panel so it is never
-    // orphaned to the end of the guide.
+    // ── Dividers, top panel and fixed shelves ──
+    // The dividers and the top get a step each rather than arriving as one
+    // pre-assembled inner structure: on a standard unit the dividers are stood
+    // on the bottom first, then the top closes them. On an overlay-bottom
+    // (upper) unit the build starts from the top panel instead, so the top is
+    // positioned first and the dividers hang off it.
+    //
+    // ICB (Face Frame - Divider) anchors to the Vertical Division panels and
+    // UCB (Face Frame - Top) to the Top panel, so each rides with its own step.
+    // The bare "Face Frame" group catches any un-split parent face-frame panel
+    // so it is never orphaned to the end of the guide.
     // When the top overlays the sides, it (and its face frame) is excluded
     // here — it gets its own step after the back, before the wall bar.
-    const dividerTopKeys: GroupKey[] = ["Vertical Division"];
-    if (!topOverlaysSides) dividerTopKeys.push("Top");
-    if (!topOverlaysSides && has("Face Frame - Top"))
-      dividerTopKeys.push("Face Frame - Top");
-    if (has("Face Frame - Divider")) dividerTopKeys.push("Face Frame - Divider");
-    if (has("Face Frame")) dividerTopKeys.push("Face Frame");
-    {
-      // Build contextual helper text based on which parts actually exist
-      let beforeTighteningContent: string;
+    const earlyTop = !topOverlaysSides && hasTop;
+
+    const dividerKeys: GroupKey[] = ["Vertical Division"];
+    const topKeys: GroupKey[] = ["Top"];
+
+    // UCB face frames belong to the top panel, so they follow it: onto the
+    // early top step here, or onto the late overlay-top step when the top moves
+    // there. Only a unit with no top panel at all falls back to the dividers.
+    if (has("Face Frame - Top")) {
+      if (earlyTop) topKeys.push("Face Frame - Top");
+      else if (!topOverlaysSides) dividerKeys.push("Face Frame - Top");
+    }
+
+    // ICB face frames anchor to the divider panels; without dividers they ride
+    // with the top. Un-split parent FF panels ride with the early top step when
+    // there is one, otherwise they anchor to the dividers. Anything with nowhere
+    // to go is picked up by the late overlay-top step so it never falls to the
+    // end of the guide.
+    for (const ffKey of ["Face Frame - Divider", "Face Frame"] as GroupKey[]) {
+      if (!has(ffKey)) continue;
+      if (hasDivider && ffKey === "Face Frame - Divider")
+        dividerKeys.push(ffKey);
+      else if (earlyTop) topKeys.push(ffKey);
+      else if (hasDivider) dividerKeys.push(ffKey);
+      else orphanFFKeys.push(ffKey);
+    }
+
+    // With 2+ dividers the inner column(s) are sealed the moment the top goes
+    // on, so every fixed shelf has to be in place first. With 0-1 dividers the
+    // columns stay open at the sides, so shelves can wait until just before the
+    // sides go on (the usual, easier order).
+    const shelvesBeforeTop =
+      hasFixedShelf && earlyTop && !bottomOverlaysSides && dividerCount >= 2;
+
+    const addDividerStep = () => {
+      const hasFF = dividerKeys.some((k) => k.startsWith("Face Frame"));
+      const anchor = bottomOverlaysSides
+        ? "the top panel"
+        : hasBottom
+          ? "the bottom panel"
+          : "the base";
+
+      // Without divider panels this step carries only the face-frame pieces
+      // that had no other panel to anchor to — addStep drops it entirely if
+      // neither is present.
+      const copy = !hasDivider
+        ? "Attach the face frame pieces to their panels."
+        : hasFF
+          ? `Connect the divider(s) to ${anchor}, with their face frame pieces attached.`
+          : `Connect the divider(s) to ${anchor}.`;
+
+      const helpers: StepHelper[] = [];
       if (hasDivider) {
-        const structureParts: string[] = [];
-        if (!topOverlaysSides) structureParts.push("the top");
-        if (hasBottom) structureParts.push(topOverlaysSides ? "the bottom" : "bottom");
-        structureParts.push("divider(s)");
-        beforeTighteningContent = topOverlaysSides
-          ? `With the front edges facing the floor, connect ${structureParts.join(", ")} to form the inner structure. The top panel overlays the sides on this unit and is fitted at the end — not now.`
-          : `With the front edges facing the floor, connect ${structureParts.join(", ")} to form the inner structure. Ensure the divider is flush with the top edge before locking cams.`;
+        helpers.push(
+          {
+            title: "Before tightening",
+            content: bottomOverlaysSides
+              ? "With the front edges facing the floor, seat each divider against the top panel and lock the cams. Check it is square before tightening."
+              : `With the front edges facing the floor, stand each divider on ${anchor} and lock the cams. Check it is square before tightening.`,
+          },
+          {
+            title: "Divider orientation",
+            content:
+              "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
+          }
+        );
+      }
+      if (shelvesBeforeTop) {
+        helpers.push({
+          title: "What comes next",
+          content:
+            "Leave the top panel off for now — the fixed shelves go in next, while the columns are still open from above.",
+        });
+      }
+
+      addStep(dividerKeys, copy, {
+        usesFittings: true,
+        helpers: helpers.length > 0 ? helpers : undefined,
+      });
+    };
+
+    const addTopStep = () => {
+      // Overlay tops are fitted after the back, in their own step further down.
+      if (!earlyTop) return;
+      const hasFF = topKeys.some((k) => k.startsWith("Face Frame"));
+
+      let copy: string;
+      let beforeTightening: string;
+      if (bottomOverlaysSides) {
+        copy = hasFF
+          ? "Position the top panel, with its face frame piece attached."
+          : "Position the top panel to start the build.";
+        beforeTightening =
+          "Lay the top panel face-down with the front edge on the floor. This unit is built top-down and stood upright once complete.";
+      } else if (hasDivider) {
+        copy = hasFF
+          ? "Attach the top panel over the divider(s), with its face frame piece attached."
+          : "Attach the top panel over the divider(s) to complete the inner structure.";
+        beforeTightening =
+          "With the front edges still facing the floor, lower the top panel onto the divider(s) and lock the cams. Ensure each divider is flush with the top edge before tightening.";
       } else {
-        beforeTighteningContent =
+        copy = hasFF
+          ? "Fit the top panel, with the face frame piece attached."
+          : "Fit the top panel.";
+        beforeTightening =
           "With the front edges facing the floor, position the top panel and lock the cams.";
       }
 
-      const dividerHelpers: StepHelper[] = [
-        {
-          title: "Before tightening",
-          content: beforeTighteningContent,
-        },
-      ];
-      if (hasDivider) {
-        dividerHelpers.push({
-          title: "Divider orientation",
-          content:
-            "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
-        });
-      }
-      const hasFFInStep = dividerTopKeys.some((k) => k.startsWith("Face Frame"));
-      const dividerTopCopy = topOverlaysSides
-        ? hasFFInStep
-          ? "Fit the divider(s), with their face frame pieces attached."
-          : "Fit the divider(s) to form the inner structure."
-        : hasFFInStep
-          ? hasDivider
-            ? "Fit the divider and top panel, with their face frame pieces attached."
-            : "Fit the top panel, with the face frame piece attached."
-          : hasDivider
-            ? "Fit the divider and top panel to form the inner structure."
-            : "Fit the top panel.";
-      addStep(
-        dividerTopKeys,
-        dividerTopCopy,
-        {
-          usesFittings: true,
-          helpers: dividerHelpers,
-        }
-      );
-    }
+      addStep(topKeys, copy, {
+        usesFittings: true,
+        helpers: [{ title: "Before tightening", content: beforeTightening }],
+      });
+    };
 
-    // ── Fixed shelves (MUST be before sides) ──
-    if (hasFixedShelf) {
+    const addFixedShelfStep = () => {
+      if (!hasFixedShelf) return;
       addStep(
         ["Fixed Shelf"],
-        "Fit the fixed shelves before closing the cabinet with the sides.",
+        shelvesBeforeTop
+          ? "Fit all the fixed shelves now, before the top panel goes on."
+          : "Fit the fixed shelves before closing the cabinet with the sides.",
         {
           usesFittings: true,
           helpers: [
             {
               title: "Why this matters",
-              content:
-                "Fixed shelves cannot be inserted after the sides are fitted — they must go in now.",
+              content: shelvesBeforeTop
+                ? `${dividerCount} dividers make ${dividerCount + 1} columns. Once the top panel is fitted, the inner column(s) are fully enclosed and their shelves can no longer be dropped in — so every fixed shelf must go in at this stage.`
+                : "Fixed shelves cannot be inserted after the sides are fitted — they must go in now.",
             },
             {
               title: "Common mistakes",
@@ -421,6 +500,18 @@ export function generateSteps(
           ],
         }
       );
+    };
+
+    if (bottomOverlaysSides) {
+      // Upper unit: top panel is the base of the build, dividers hang from it.
+      addTopStep();
+      addDividerStep();
+      addFixedShelfStep();
+    } else {
+      addDividerStep();
+      if (shelvesBeforeTop) addFixedShelfStep();
+      addTopStep();
+      if (!shelvesBeforeTop) addFixedShelfStep();
     }
 
     // ── Sides + Face Frame Left/Right ──
@@ -499,11 +590,13 @@ export function generateSteps(
   if (topOverlaysSides) {
     const lateTopKeys: GroupKey[] = ["Top"];
     if (has("Face Frame - Top")) lateTopKeys.push("Face Frame - Top");
-    // In the no-divider flow these orphaned face-frame parts would normally
-    // anchor to the early top step — keep them with the top when it moves late.
+    // These face-frame parts would normally anchor to the early top step —
+    // keep them with the top when it moves late.
     if (noDividerFlow) {
       if (has("Face Frame - Divider")) lateTopKeys.push("Face Frame - Divider");
       if (has("Face Frame")) lateTopKeys.push("Face Frame");
+    } else {
+      lateTopKeys.push(...orphanFFKeys);
     }
     addStep(
       lateTopKeys,
