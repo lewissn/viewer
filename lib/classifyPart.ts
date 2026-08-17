@@ -158,6 +158,11 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
   "Drawer Box - Bottom": [0, -1.2, 0],
   Drawer: [0, -1.2, 0],
   "Fixed Shelf": [0, 0, 0.8],
+  // Centre/outer subgroups are produced by geometric refinement on
+  // multi-divider units, never by name classification — same motion as the
+  // parent group so a split cabinet animates identically to an unsplit one.
+  "Fixed Shelf - Centre": [0, 0, 0.8],
+  "Fixed Shelf - Outer": [0, 0, 0.8],
   Shelf: [0, 0, 0.8],
   "Filler - Side": [1.2, 0, 0],
   "Filler - Front": [0, 0, 1.0],

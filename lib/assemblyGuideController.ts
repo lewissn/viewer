@@ -206,6 +206,11 @@ export class AssemblyGuideController {
     // belong to — tall rails go with the sides, wide rails with the top)
     this.refineFaceFrameGroups();
 
+    // Split "Fixed Shelf" into centre/outer by geometry on multi-divider units
+    // (shelves trapped between two dividers have to be built into the divider
+    // assembly before it goes onto the base panel)
+    this.refineFixedShelfGroups();
+
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
 
@@ -668,6 +673,101 @@ export class AssemblyGuideController {
 
       log(
         `Face frame refine: "${part.name}" upExt=${uExt.toFixed(1)} widthExt=${wExt.toFixed(1)} -> ${part.groupKey}`
+      );
+    }
+  }
+
+  /**
+   * Split "Fixed Shelf" into centre and outer subgroups by geometry.
+   *
+   * With two or more dividers the cabinet has three or more columns, and the
+   * shelves in the inner column(s) are trapped: once the dividers are fixed to
+   * the base panel those columns are closed on both sides, and a shelf can no
+   * longer be slid in from either direction. Those shelves have to be built
+   * into the divider assembly first, so the guide gives them their own step
+   * ahead of the base panel.
+   *
+   * A shelf counts as "centre" when it sits between the outermost dividers.
+   * Shelves outside that span are bounded by a side panel on one edge, so they
+   * stay reachable and only need to be in before the sides go on.
+   *
+   * Everything is left in the bare "Fixed Shelf" group when the split does not
+   * apply — fewer than two dividers, or no shelf actually between them — so
+   * those cabinets keep the ordinary ordering.
+   */
+  private refineFixedShelfGroups() {
+    const shelves = this.allParts.filter(
+      (p) => p.groupKey === "Fixed Shelf" && !p.isFitting
+    );
+    if (shelves.length === 0) return;
+
+    const dividers = this.allParts.filter(
+      (p) => p.groupKey === "Vertical Division" && !p.isFitting
+    );
+    if (dividers.length < 2) return;
+
+    const axes = ["x", "y", "z"] as const;
+    type Axis = (typeof axes)[number];
+    const center = (b: { min: Vec3; max: Vec3 }, a: Axis) =>
+      (b.min[a] + b.max[a]) / 2;
+
+    const dividerBounds = dividers
+      .map((d) => this.getPartWorldBounds(d))
+      .filter((b): b is { min: Vec3; max: Vec3 } => b !== null);
+    if (dividerBounds.length < 2) return;
+
+    // Width axis: the axis separating the two side panels is the most reliable
+    // signal. Without sides, fall back to the axis the dividers spread along —
+    // dividers stand apart from each other across the cabinet width.
+    const left = this.getGroupWorldBounds("Left Side");
+    const right = this.getGroupWorldBounds("Right Side");
+    let widthAxis: Axis = "x";
+    let best = -Infinity;
+    for (const a of axes) {
+      const d =
+        left && right
+          ? Math.abs(center(left, a) - center(right, a))
+          : (() => {
+              const cs = dividerBounds.map((b) => center(b, a));
+              return Math.max(...cs) - Math.min(...cs);
+            })();
+      if (d > best) {
+        best = d;
+        widthAxis = a;
+      }
+    }
+
+    const dividerCentres = dividerBounds
+      .map((b) => center(b, widthAxis))
+      .sort((p, q) => p - q);
+    const innerMin = dividerCentres[0];
+    const innerMax = dividerCentres[dividerCentres.length - 1];
+    const span = innerMax - innerMin;
+    if (!(span > 0) || !isFinite(span)) return;
+
+    // A shelf whose centre lands on a divider is ambiguous — keep it out of the
+    // centre group unless it is clearly inside the span.
+    const margin = span * 0.02;
+
+    const touched: PartMesh[] = [];
+    for (const shelf of shelves) {
+      const b = this.getPartWorldBounds(shelf);
+      if (!b) continue;
+      const c = center(b, widthAxis);
+      const isCentre = c > innerMin + margin && c < innerMax - margin;
+      shelf.groupKey = isCentre ? "Fixed Shelf - Centre" : "Fixed Shelf - Outer";
+      touched.push(shelf);
+      log(
+        `Fixed shelf refine: "${shelf.name}" ${widthAxis}=${c.toFixed(1)} dividerSpan=[${innerMin.toFixed(1)}, ${innerMax.toFixed(1)}] -> ${shelf.groupKey}`
+      );
+    }
+
+    // No shelf is actually trapped between dividers — revert so the cabinet
+    // keeps the ordinary single "Fixed Shelf" step.
+    if (!touched.some((p) => p.groupKey === "Fixed Shelf - Centre")) {
+      for (const p of touched) p.groupKey = "Fixed Shelf";
+      log(
+        "Fixed shelf refine: no shelves between dividers — keeping a single group"
       );
     }
   }

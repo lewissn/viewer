@@ -50,7 +50,13 @@ export function buildCabinetSummary(
   const hasDrawers = drawerBoxCount > 0;
 
   const dividerCount = count("Vertical Division");
-  const fixedShelfCount = count("Fixed Shelf");
+  // Multi-divider units have their shelves split into centre/outer subgroups by
+  // geometric refinement, so the total spans all three keys.
+  const fixedShelfCount =
+    count("Fixed Shelf") +
+    count("Fixed Shelf - Centre") +
+    count("Fixed Shelf - Outer");
+  const centreShelfCount = count("Fixed Shelf - Centre");
   const hasRearBrace = has("Rear Brace");
   const overlayBottom = flags.bottomOverlaysSides ?? false;
   const overlayTop = flags.topOverlaysSides ?? false;
@@ -129,21 +135,19 @@ export function buildCabinetSummary(
       "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
     );
   }
-  if (dividerCount > 0) {
+  // Mirrors the step generator: centre shelves mean the build starts from the
+  // divider assembly rather than the base panel.
+  if (centreShelfCount > 0) {
+    notes.push(
+      `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first — the inner column(s) close up once the dividers meet the base panel, so those shelves cannot be added later.`
+    );
+  } else if (dividerCount > 0) {
     notes.push(
       "Dividers form the inner structure and must be connected early."
     );
   }
-  if (fixedShelfCount > 0) {
-    // Mirrors the step generator's shelves-before-top rule: only a bottom-up
-    // build with an inset top actually encloses the inner column(s).
-    if (dividerCount >= 2 && has("Top") && !overlayBottom && !overlayTop) {
-      notes.push(
-        `${dividerCount} dividers make ${dividerCount + 1} columns — fit every fixed shelf before the top panel, or the inner column(s) will be sealed shut.`
-      );
-    } else {
-      notes.push("Fixed shelves must be installed before side panels.");
-    }
+  if (fixedShelfCount > 0 && centreShelfCount === 0) {
+    notes.push("Fixed shelves must be installed before side panels.");
   }
   if (hasFaceFrames) {
     notes.push(
