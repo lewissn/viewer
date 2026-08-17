@@ -192,7 +192,8 @@ export interface GeneratedGuide {
  */
 export function generateGuideFromGroups(
   groupSet: Set<string>,
-  overrides?: GuideOverrides
+  overrides?: GuideOverrides,
+  groupCounts?: Record<string, number>
 ): GeneratedGuide {
   const detectedGroups = Array.from(groupSet);
 
@@ -200,6 +201,7 @@ export function generateGuideFromGroups(
   const steps = generateSteps(groupSet, {
     bottomOverlaysSides: overrides?.bottomOverlaysSides,
     topOverlaysSides: overrides?.topOverlaysSides,
+    dividerCount: groupCounts?.["Vertical Division"],
   });
 
   // Build explode offsets (defaults + overrides)
@@ -229,11 +231,14 @@ export function generateGuideFromParts(
   partNames: string[],
   overrides?: GuideOverrides
 ): GeneratedGuide {
-  // Classify all parts and collect groups
+  // Classify all parts and collect groups (with counts, so the step generator
+  // can tell a single-divider cabinet from a multi-column one)
   const groupSet = new Set<string>();
+  const groupCounts: Record<string, number> = {};
   for (const name of partNames) {
     const { groupKey } = classifyPart(name);
     groupSet.add(groupKey);
+    groupCounts[groupKey] = (groupCounts[groupKey] ?? 0) + 1;
   }
-  return generateGuideFromGroups(groupSet, overrides);
+  return generateGuideFromGroups(groupSet, overrides, groupCounts);
 }
