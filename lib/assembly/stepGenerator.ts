@@ -6,7 +6,11 @@
  * - No-divider flow: sequential side-by-side assembly (Left Side anchors the build)
  * - Divider flow: bottom, then dividers, then top, then sides
  * - Fixed shelves: before sides/right side (access constraint)
- * - Fixed shelves with 2+ dividers: before the top (inner columns get enclosed)
+ * - Assembly-first flow: when the model has shelves trapped between two
+ *   dividers ("Fixed Shelf - Centre", split out geometrically by the
+ *   controller), the inner assembly is built first and the surrounding panels
+ *   are brought to it — dividers, centre shelves, outer shelves, base, top,
+ *   sides. Those shelves cannot be inserted once the dividers meet the base.
  * - Face frames: early (cam access)
  * - Rear brace: after back
  * - Overlay bottom (upper unit): base step after sides when flag set
@@ -24,10 +28,11 @@ export interface CabinetFlags {
   /** Top overlays sides: top must be fitted LAST, after the back but before the wall bar */
   topOverlaysSides?: boolean;
   /**
-   * Number of vertical divider panels. 2+ dividers means 3+ columns, and the
-   * inner column(s) are enclosed once the top goes on — so their fixed shelves
-   * have to be fitted before the top panel, not after. Defaults to 1 when
-   * dividers are present but no count was supplied.
+   * Number of vertical divider panels, used for the copy that explains how many
+   * columns the cabinet has. The build order itself keys off whether the model
+   * actually has shelves trapped between dividers ("Fixed Shelf - Centre"),
+   * not off this count. Defaults to 1 when dividers are present but no count
+   * was supplied.
    */
   dividerCount?: number;
 }
@@ -74,7 +79,13 @@ export function generateSteps(
   const hasBottom = has("Bottom");
   const hasTop = has("Top");
   const hasPlinth = has("Plinth");
-  const hasFixedShelf = has("Fixed Shelf");
+  // On multi-divider units the controller splits "Fixed Shelf" into centre and
+  // outer subgroups by geometry. A centre shelf sits between two dividers and
+  // is trapped once they meet the base panel, which changes the whole build
+  // order; the bare group means no split applied.
+  const hasCentreShelf = has("Fixed Shelf - Centre");
+  const hasOuterShelf = has("Fixed Shelf - Outer");
+  const hasFixedShelf = has("Fixed Shelf") || hasCentreShelf || hasOuterShelf;
   const hasFaceFrames =
     has("Face Frame - Top") ||
     has("Face Frame - Left") ||
@@ -261,10 +272,12 @@ export function generateSteps(
       });
     }
 
-    // Fixed shelves (before right side — access constraint)
+    // Fixed shelves (before right side — access constraint).
+    // A cabinet reaching this flow has no dividers, so the centre/outer split
+    // never applies; the subgroup keys are listed only for completeness.
     if (hasFixedShelf) {
       addStep(
-        ["Fixed Shelf"],
+        ["Fixed Shelf", "Fixed Shelf - Centre", "Fixed Shelf - Outer"],
         "Fit the fixed shelves before closing the cabinet with the right side.",
         {
           usesFittings: true,
@@ -310,12 +323,21 @@ export function generateSteps(
     );
   } else {
     // ── Divider / upper-unit flow ──
-    // Base, then dividers, then top, then both sides together.
+    // Ordinary units: base, then dividers, then top, then both sides.
+    // Units with shelves trapped between dividers: the divider assembly is
+    // built first and the base panel is brought to it (see below).
 
     // Base step (Bottom + Plinth) — only for non-overlay units
-    if (!bottomOverlaysSides && (hasBottom || hasPlinth)) {
-      const baseCopy =
-        hasBottom && hasPlinth
+    const addBaseStep = () => {
+      if (bottomOverlaysSides || !(hasBottom || hasPlinth)) return;
+
+      const baseCopy = hasCentreShelf
+        ? hasBottom && hasPlinth
+          ? "Connect the bottom and plinth panels to the divider assembly."
+          : hasBottom
+            ? "Connect the bottom panel to the divider assembly."
+            : "Connect the plinth panel to the divider assembly."
+        : hasBottom && hasPlinth
           ? "Connect the bottom and plinth panels."
           : hasBottom
             ? "Position the bottom panel."
@@ -324,22 +346,25 @@ export function generateSteps(
       const baseHelpers: StepHelper[] = [
         {
           title: "Before tightening",
-          content:
-            "Insert all Rafix cam screws and tap Rafix cams into place before connecting. Do not over-tighten — snug is sufficient.",
+          content: hasCentreShelf
+            ? "Lower the bottom panel onto the standing divider assembly and locate every tenon before locking any cams. Work across the cabinet rather than tightening one divider fully at a time."
+            : "Insert all Rafix cam screws and tap Rafix cams into place before connecting. Do not over-tighten — snug is sufficient.",
         },
       ];
 
       if (hasPlinth) {
         baseHelpers.push({
           title: "Professional tip",
-          content:
-            "Lay the plinth face-down with the front edge on the floor, align the bottom panel, and lock the cams. The cabinet is built front-edges-down and lifted upright once complete.",
+          content: hasCentreShelf
+            ? "Fit the plinth to the bottom panel once the bottom is locked to the dividers. The cabinet is built front-edges-down and lifted upright once complete."
+            : "Lay the plinth face-down with the front edge on the floor, align the bottom panel, and lock the cams. The cabinet is built front-edges-down and lifted upright once complete.",
         });
       } else {
         baseHelpers.push({
           title: "Professional tip",
-          content:
-            "Lay the bottom panel face-down with the front edge on the floor. The cabinet is built front-edges-down and lifted upright once complete.",
+          content: hasCentreShelf
+            ? "The cabinet is built front-edges-down and lifted upright once complete."
+            : "Lay the bottom panel face-down with the front edge on the floor. The cabinet is built front-edges-down and lifted upright once complete.",
         });
       }
 
@@ -347,7 +372,7 @@ export function generateSteps(
         usesFittings: true,
         helpers: baseHelpers,
       });
-    }
+    };
 
     // ── Dividers, top panel and fixed shelves ──
     // The dividers and the top get a step each rather than arriving as one
@@ -389,52 +414,68 @@ export function generateSteps(
       else orphanFFKeys.push(ffKey);
     }
 
-    // With 2+ dividers the inner column(s) are sealed the moment the top goes
-    // on, so every fixed shelf has to be in place first. With 0-1 dividers the
-    // columns stay open at the sides, so shelves can wait until just before the
-    // sides go on (the usual, easier order).
-    const shelvesBeforeTop =
-      hasFixedShelf && earlyTop && !bottomOverlaysSides && dividerCount >= 2;
+    // A centre shelf is one the controller found sitting between two dividers.
+    // Those are trapped: once the dividers meet the base panel the inner
+    // column(s) are closed on both sides and the shelf can no longer be slid in
+    // from either direction. So the build inverts — the dividers are laid out
+    // first, the shelves are connected to them, and the base panel is brought
+    // to the finished assembly rather than the other way round. This also keeps
+    // every step anchored to something already on screen, instead of shelves
+    // hanging in mid-air waiting for dividers that have not appeared yet.
+    //
+    // Without centre shelves nothing is trapped, so the ordinary order stands.
+    const assemblyFirst = hasCentreShelf;
+
+    // Panel the divider assembly meets: the bottom on a normal unit, the top on
+    // an upper unit (which is built top-down).
+    const dividerAnchor = bottomOverlaysSides
+      ? "the top panel"
+      : hasBottom
+        ? "the bottom panel"
+        : "the base";
 
     const addDividerStep = () => {
       const hasFF = dividerKeys.some((k) => k.startsWith("Face Frame"));
-      const anchor = bottomOverlaysSides
-        ? "the top panel"
-        : hasBottom
-          ? "the bottom panel"
-          : "the base";
 
       // Without divider panels this step carries only the face-frame pieces
       // that had no other panel to anchor to — addStep drops it entirely if
       // neither is present.
-      const copy = !hasDivider
-        ? "Attach the face frame pieces to their panels."
-        : hasFF
-          ? `Connect the divider(s) to ${anchor}, with their face frame pieces attached.`
-          : `Connect the divider(s) to ${anchor}.`;
+      let copy: string;
+      if (!hasDivider) {
+        copy = "Attach the face frame pieces to their panels.";
+      } else if (assemblyFirst) {
+        // Nothing else is on the bench yet — the dividers start the build and
+        // the shelves are connected to them over the next steps.
+        copy = hasFF
+          ? "Lay the dividers out flat to begin the inner assembly, with their face frame pieces attached."
+          : "Lay the dividers out flat to begin the inner assembly.";
+      } else {
+        copy = hasFF
+          ? `Connect the divider(s) to ${dividerAnchor}, with their face frame pieces attached.`
+          : `Connect the divider(s) to ${dividerAnchor}.`;
+      }
 
       const helpers: StepHelper[] = [];
       if (hasDivider) {
-        helpers.push(
-          {
-            title: "Before tightening",
-            content: bottomOverlaysSides
-              ? "With the front edges facing the floor, seat each divider against the top panel and lock the cams. Check it is square before tightening."
-              : `With the front edges facing the floor, stand each divider on ${anchor} and lock the cams. Check it is square before tightening.`,
-          },
-          {
-            title: "Divider orientation",
-            content:
-              "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
-          }
-        );
-      }
-      if (shelvesBeforeTop) {
         helpers.push({
-          title: "What comes next",
-          content:
-            "Leave the top panel off for now — the fixed shelves go in next, while the columns are still open from above.",
+          title: "Before tightening",
+          content: assemblyFirst
+            ? `Lay the dividers front-edge-down on the floor, spaced as they will sit in the cabinet. Nothing is fixed to ${dividerAnchor} yet — the shelves go in first and the whole assembly is fitted together later.`
+            : bottomOverlaysSides
+              ? "With the front edges facing the floor, seat each divider against the top panel and lock the cams. Check it is square before tightening."
+              : `With the front edges facing the floor, stand each divider on ${dividerAnchor} and lock the cams. Check it is square before tightening.`,
         });
+        helpers.push({
+          title: "Divider orientation",
+          content:
+            "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
+        });
+        if (assemblyFirst) {
+          helpers.push({
+            title: "Why this matters",
+            content: `${dividerCount} dividers make ${dividerCount + 1} columns. The shelves in the inner column(s) are closed in once the dividers meet ${dividerAnchor}, so the inner structure is built as one piece first and fitted complete.`,
+          });
+        }
       }
 
       addStep(dividerKeys, copy, {
@@ -451,11 +492,18 @@ export function generateSteps(
       let copy: string;
       let beforeTightening: string;
       if (bottomOverlaysSides) {
-        copy = hasFF
-          ? "Position the top panel, with its face frame piece attached."
-          : "Position the top panel to start the build.";
-        beforeTightening =
-          "Lay the top panel face-down with the front edge on the floor. This unit is built top-down and stood upright once complete.";
+        // On an upper unit the top is the panel the assembly is fixed to, so
+        // when the assembly is built first the top comes to it, not vice versa.
+        copy = assemblyFirst
+          ? hasFF
+            ? "Connect the top panel to the divider assembly, with its face frame piece attached."
+            : "Connect the top panel to the divider assembly."
+          : hasFF
+            ? "Position the top panel, with its face frame piece attached."
+            : "Position the top panel to start the build.";
+        beforeTightening = assemblyFirst
+          ? "Lower the top panel onto the standing divider assembly and locate every tenon before locking any cams. This unit is built top-down and stood upright once complete."
+          : "Lay the top panel face-down with the front edge on the floor. This unit is built top-down and stood upright once complete.";
       } else if (hasDivider) {
         copy = hasFF
           ? "Attach the top panel over the divider(s), with its face frame piece attached."
@@ -476,42 +524,106 @@ export function generateSteps(
       });
     };
 
-    const addFixedShelfStep = () => {
-      if (!hasFixedShelf) return;
+    const edgeBandingNote: StepHelper = {
+      title: "Common mistakes",
+      content: "Fitting shelves upside down — check edge banding faces forward.",
+    };
+
+    // Shelves between two dividers — the trapped ones. They go in while the
+    // dividers are still loose and can be spread apart to take them.
+    const addCentreShelfStep = () => {
+      if (!hasCentreShelf) return;
       addStep(
-        ["Fixed Shelf"],
-        shelvesBeforeTop
-          ? "Fit all the fixed shelves now, before the top panel goes on."
-          : "Fit the fixed shelves before closing the cabinet with the sides.",
+        ["Fixed Shelf - Centre"],
+        "Connect the centre fixed shelves between the dividers.",
         {
           usesFittings: true,
           helpers: [
             {
               title: "Why this matters",
-              content: shelvesBeforeTop
-                ? `${dividerCount} dividers make ${dividerCount + 1} columns. Once the top panel is fitted, the inner column(s) are fully enclosed and their shelves can no longer be dropped in — so every fixed shelf must go in at this stage.`
-                : "Fixed shelves cannot be inserted after the sides are fitted — they must go in now.",
+              content: `These shelves sit in the inner column(s), enclosed by a divider on both sides. Once the dividers are fixed to ${dividerAnchor} there is no way to slide one in, so they have to go in now while the dividers are still free to move.`,
             },
             {
-              title: "Common mistakes",
+              title: "Before tightening",
               content:
-                "Fitting shelves upside down — check edge banding faces forward.",
+                "Work with the dividers lying front-edge-down. Connect each shelf to one divider, then bring the second divider onto the shelf ends and lock the cams. Keep the assembly square as you go.",
             },
+            edgeBandingNote,
           ],
         }
       );
     };
 
-    if (bottomOverlaysSides) {
+    // Shelves between a divider and a side panel — reachable from the open
+    // side, but fitted now so the inner assembly goes in complete.
+    const addOuterShelfStep = () => {
+      if (!hasOuterShelf) return;
+      addStep(
+        ["Fixed Shelf - Outer"],
+        "Connect the outer fixed shelves to the dividers.",
+        {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Why this matters",
+              content:
+                "These shelves are open on one edge until the side panels go on, so they are not trapped like the centre shelves. Fitting them now keeps the whole inner assembly together as one piece.",
+            },
+            {
+              title: "Before tightening",
+              content:
+                "Connect each shelf to the outer face of its divider. The unsupported edge is picked up by the side panel later — leave it free for now.",
+            },
+            edgeBandingNote,
+          ],
+        }
+      );
+    };
+
+    // Ordinary shelf step, used when nothing is trapped. Covers the subgroup
+    // keys too: the controller reverts to the bare group when it finds no
+    // centre shelf, but listing them keeps this total so no shelf can be
+    // dropped if a model ever splits into outer shelves alone.
+    const addFixedShelfStep = () => {
+      if (!hasFixedShelf) return;
+      addStep(
+        ["Fixed Shelf", "Fixed Shelf - Centre", "Fixed Shelf - Outer"],
+        "Fit the fixed shelves before closing the cabinet with the sides.",
+        {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Why this matters",
+              content:
+                "Fixed shelves cannot be inserted after the sides are fitted — they must go in now.",
+            },
+            edgeBandingNote,
+          ],
+        }
+      );
+    };
+
+    if (assemblyFirst) {
+      // Shelves are trapped between dividers, so the inner assembly is built
+      // first and the surrounding panels are brought to it:
+      //   dividers -> centre shelves -> outer shelves -> base -> top -> sides
+      // Each step attaches to something already on screen, and nothing has to
+      // hang unsupported waiting for a later part.
+      addDividerStep();
+      addCentreShelfStep();
+      addOuterShelfStep();
+      addBaseStep();
+      addTopStep();
+    } else if (bottomOverlaysSides) {
       // Upper unit: top panel is the base of the build, dividers hang from it.
       addTopStep();
       addDividerStep();
       addFixedShelfStep();
     } else {
+      addBaseStep();
       addDividerStep();
-      if (shelvesBeforeTop) addFixedShelfStep();
       addTopStep();
-      if (!shelvesBeforeTop) addFixedShelfStep();
+      addFixedShelfStep();
     }
 
     // ── Sides + Face Frame Left/Right ──
