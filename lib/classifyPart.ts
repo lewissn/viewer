@@ -206,6 +206,7 @@ export function generateGuideFromGroups(
   const steps = generateSteps(groupSet, {
     bottomOverlaysSides: overrides?.bottomOverlaysSides,
     topOverlaysSides: overrides?.topOverlaysSides,
+    backFixedToCarcass: overrides?.backFixedToCarcass,
     dividerCount: groupCounts?.["Vertical Division"],
   });
 

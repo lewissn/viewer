@@ -53,6 +53,9 @@ const DRAWER_GROUP_KEYS = new Set([
   "Drawer",
 ]);
 
+/** Groups a handle or knob can be mounted on */
+const FRONT_GROUP_KEYS = new Set(["Door", "Drawer"]);
+
 /** A THREE.Mesh with its metadata */
 interface PartMesh {
   threeMesh: any; // THREE.Mesh
@@ -64,6 +67,8 @@ interface PartMesh {
   drawerIndex?: string;
   /** True if this mesh is a small fitting (cam, screw, etc.) rather than a panel */
   isFitting?: boolean;
+  /** Door or drawer front this part is mounted on (handles, knobs) */
+  attachedTo?: PartMesh;
 }
 
 export interface ControllerState {
@@ -201,6 +206,12 @@ export class AssemblyGuideController {
     // Flag small meshes as fittings (cams, screws from 3DS exports)
     this.flagFittingsBySize();
 
+    // Move handles onto the door/drawer front they are mounted on. They are
+    // too big to be flagged as fittings, and the export names them after
+    // whichever panel came last (e.g. "Plinth 1 [1] 307"), so left alone they
+    // would join that panel's step and float in front of nothing.
+    this.attachHandlesToFronts();
+
     // Split bare "Face Frame" parts into Left/Right/Top by geometry
     // (dresser units have FF rails whose names don't say which panel they
     // belong to — tall rails go with the sides, wide rails with the top)
@@ -224,9 +235,19 @@ export class AssemblyGuideController {
         ? "(admin override)"
         : "(auto-detected)"
     );
+    // Structural back: same pattern — admin override, else model geometry.
+    const backFixedToCarcass =
+      overrides?.backFixedToCarcass ?? this.detectStructuralBack();
+    console.log(
+      `[AssemblyGuide] Structural back: ${backFixedToCarcass}`,
+      overrides?.backFixedToCarcass !== undefined
+        ? "(admin override)"
+        : "(auto-detected)"
+    );
     const effectiveOverrides: GuideOverrides = {
       ...overrides,
       topOverlaysSides,
+      backFixedToCarcass,
     };
 
     // Generate guide from the resolved panel groups (fittings excluded).
@@ -257,6 +278,7 @@ export class AssemblyGuideController {
       {
         bottomOverlaysSides: overrides?.bottomOverlaysSides,
         topOverlaysSides,
+        backFixedToCarcass,
       }
     );
     this._detectedGroups = generated.detectedGroups;
@@ -579,6 +601,116 @@ export class AssemblyGuideController {
     );
 
     return overlay;
+  }
+
+  /**
+   * Detect a structural back: a full-thickness panel cammed onto the carcass
+   * rather than a thin back slid into grooves.
+   *
+   * Compared against the side panels rather than an absolute figure so the
+   * check holds whatever units the model was exported in. Grooved backs are
+   * well under half the carcass thickness (6–9mm against 18mm); a structural
+   * back matches it.
+   */
+  private detectStructuralBack(): boolean {
+    const thickness = (part: PartMesh) => {
+      const b = this.getPartWorldBounds(part);
+      if (!b) return -1;
+      return Math.min(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z);
+    };
+    const panels = (key: string) =>
+      this.allParts.filter((p) => p.groupKey === key && !p.isFitting);
+
+    const backs = panels("Back").map(thickness).filter((t) => t > 0);
+    const sides = [...panels("Left Side"), ...panels("Right Side")]
+      .map(thickness)
+      .filter((t) => t > 0);
+    if (backs.length === 0 || sides.length === 0) return false;
+
+    const backT = Math.max(...backs);
+    const sideT = Math.max(...sides);
+    const structural = backT >= sideT * 0.75;
+
+    log(
+      `Structural-back detection: back=${backT.toFixed(1)}, side=${sideT.toFixed(1)} -> ${structural}`
+    );
+
+    return structural;
+  }
+
+  /**
+   * Attach handles and knobs to the door or drawer front they are mounted on.
+   *
+   * A part counts as mounted when it lies within a front's face and stands
+   * off its outer face (the one facing away from the carcass). It then takes
+   * the front's group, so it appears and animates with that front instead of
+   * with whatever panel its exported name points at.
+   */
+  private attachHandlesToFronts() {
+    const fronts = this.allParts
+      .filter((p) => FRONT_GROUP_KEYS.has(p.groupKey) && !p.isFitting)
+      .map((part) => ({ part, b: this.getPartWorldBounds(part) }))
+      .filter(
+        (f): f is { part: PartMesh; b: { min: Vec3; max: Vec3 } } =>
+          f.b !== null
+      );
+    if (fronts.length === 0) return;
+
+    const axes = ["x", "y", "z"] as const;
+    type Axis = (typeof axes)[number];
+    const center = (b: { min: Vec3; max: Vec3 }, a: Axis) =>
+      (b.min[a] + b.max[a]) / 2;
+    const extent = (b: { min: Vec3; max: Vec3 }, a: Axis) =>
+      b.max[a] - b.min[a];
+
+    // Carcass centre, to tell a front's outer face from its inner face
+    let model: { min: Vec3; max: Vec3 } | null = null;
+    for (const part of this.allParts) {
+      if (part.isFitting || FRONT_GROUP_KEYS.has(part.groupKey)) continue;
+      const b = this.getPartWorldBounds(part);
+      if (!b) continue;
+      if (!model) {
+        model = { min: { ...b.min }, max: { ...b.max } };
+        continue;
+      }
+      for (const a of axes) {
+        model.min[a] = Math.min(model.min[a], b.min[a]);
+        model.max[a] = Math.max(model.max[a], b.max[a]);
+      }
+    }
+    if (!model) return;
+
+    for (const part of this.allParts) {
+      if (part.isFitting || FRONT_GROUP_KEYS.has(part.groupKey)) continue;
+      const b = this.getPartWorldBounds(part);
+      if (!b) continue;
+
+      for (const front of fronts) {
+        const fb = front.b;
+        // Depth axis = the front's thinnest dimension
+        const depth = axes.reduce((m, a) => (extent(fb, a) < extent(fb, m) ? a : m));
+        const tol = extent(fb, depth) * 0.5;
+
+        const withinFace = axes
+          .filter((a) => a !== depth)
+          .every((a) => b.min[a] >= fb.min[a] - tol && b.max[a] <= fb.max[a] + tol);
+        if (!withinFace) continue;
+
+        const outerIsMin = center(fb, depth) < center(model, depth);
+        const standsOff = outerIsMin
+          ? b.max[depth] <= fb.min[depth] + tol && b.min[depth] < fb.min[depth]
+          : b.min[depth] >= fb.max[depth] - tol && b.max[depth] > fb.max[depth];
+        if (!standsOff) continue;
+
+        log(
+          `Handle attach: "${part.name}" (${part.groupKey}) -> "${front.part.name}" (${front.part.groupKey})`
+        );
+        part.groupKey = front.part.groupKey;
+        part.drawerIndex = front.part.drawerIndex;
+        part.attachedTo = front.part;
+        break;
+      }
+    }
   }
 
   /**
@@ -1079,6 +1211,12 @@ export class AssemblyGuideController {
                 }
               }
               if (!parts.includes(best)) parts.push(best);
+              // ...with its handle
+              for (const p of this.allParts) {
+                if (p.attachedTo === best && !p.isFitting && !parts.includes(p)) {
+                  parts.push(p);
+                }
+              }
             }
           }
         }

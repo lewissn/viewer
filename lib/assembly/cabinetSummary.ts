@@ -28,7 +28,11 @@ export interface CabinetBuildSummary {
 export function buildCabinetSummary(
   detectedGroups: string[],
   groupCounts: Record<string, number>,
-  flags: { bottomOverlaysSides?: boolean; topOverlaysSides?: boolean } = {}
+  flags: {
+    bottomOverlaysSides?: boolean;
+    topOverlaysSides?: boolean;
+    backFixedToCarcass?: boolean;
+  } = {}
 ): CabinetBuildSummary {
   const has = (key: string) => detectedGroups.includes(key);
   const count = (key: string) => groupCounts[key] ?? 0;
@@ -60,6 +64,7 @@ export function buildCabinetSummary(
   const hasRearBrace = has("Rear Brace");
   const overlayBottom = flags.bottomOverlaysSides ?? false;
   const overlayTop = flags.topOverlaysSides ?? false;
+  const structuralBack = flags.backFixedToCarcass ?? false;
 
   // ── Features ──
 
@@ -132,7 +137,14 @@ export function buildCabinetSummary(
   }
   if (overlayTop) {
     notes.push(
-      "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
+      structuralBack
+        ? "Top panel overlays the sides — it is fitted once the sides are on, before the back."
+        : "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
+    );
+  }
+  if (structuralBack) {
+    notes.push(
+      "The back is a full-thickness panel fixed to every edge of the carcass — it goes on last, once the top is fitted."
     );
   }
   // Mirrors the step generator: centre shelves mean the build starts from the

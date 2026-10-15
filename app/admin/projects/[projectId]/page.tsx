@@ -387,6 +387,40 @@ export default function ProjectEditorPage() {
                       <option value="no">No</option>
                     </select>
                   </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <label
+                      htmlFor={`structural-back-${cab.cabinetId}`}
+                      className="text-[12px] text-[#424245]"
+                    >
+                      Full-thickness back (fitted last, after top):
+                    </label>
+                    <select
+                      id={`structural-back-${cab.cabinetId}`}
+                      value={
+                        cab.guideOverrides?.backFixedToCarcass === undefined
+                          ? "auto"
+                          : cab.guideOverrides.backFixedToCarcass
+                            ? "yes"
+                            : "no"
+                      }
+                      onChange={(e) =>
+                        updateCabinet(cab.cabinetId, {
+                          guideOverrides: {
+                            ...cab.guideOverrides,
+                            backFixedToCarcass:
+                              e.target.value === "auto"
+                                ? undefined
+                                : e.target.value === "yes",
+                          },
+                        })
+                      }
+                      className="rounded-lg border border-[#d2d2d7] bg-white px-2 py-1 text-[12px] text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+                    >
+                      <option value="auto">Auto-detect from model</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
 
                   {/* Model URL */}
                   <div className="mb-3">
