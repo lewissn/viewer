@@ -15,6 +15,11 @@ export interface GuideOverrides {
   bottomOverlaysSides?: boolean;
   /** Top overlays sides: top must be fitted LAST, after the back but before the wall bar */
   topOverlaysSides?: boolean;
+  /**
+   * Structural back: full-thickness back cammed onto the carcass, fitted last
+   * after the top. Undefined = auto-detect from the model's back thickness.
+   */
+  backFixedToCarcass?: boolean;
 }
 
 export interface CabinetInstance {

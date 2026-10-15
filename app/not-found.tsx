@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center px-6">
@@ -12,12 +10,6 @@ export default function NotFound() {
       <p className="mt-2 text-[14px] text-[#86868b]">
         The link may have been removed or the ID is incorrect.
       </p>
-      <Link
-        href="/admin"
-        className="mt-8 rounded-xl bg-[#0071e3] px-6 py-3 text-[15px] font-medium text-white transition-all hover:bg-[#0077ED] active:scale-[0.98]"
-      >
-        Go to Admin
-      </Link>
     </div>
   );
 }

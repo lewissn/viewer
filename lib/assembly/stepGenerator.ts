@@ -15,6 +15,8 @@
  * - Rear brace: after back
  * - Overlay bottom (upper unit): base step after sides when flag set
  * - Overlay top: top step after back but before rear brace / wall bar when flag set
+ * - Structural back: a full-thickness back cammed onto the carcass goes on
+ *   last, after the top, rather than sliding into grooves before it
  * - Drawers: separate step, not in carcass
  */
 
@@ -35,6 +37,12 @@ export interface CabinetFlags {
    * was supplied.
    */
   dividerCount?: number;
+  /**
+   * Structural back: a full-thickness panel cammed onto the sides, top and
+   * bottom (and screwed into any dividers) instead of a thin back slid into
+   * grooves. It closes the whole carcass, so it is fitted last — after the top.
+   */
+  backFixedToCarcass?: boolean;
 }
 
 export interface AssemblyStepBlock {
@@ -108,6 +116,7 @@ export function generateSteps(
 
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
   const topOverlaysSides = flags.topOverlaysSides ?? false;
+  const backFixedToCarcass = flags.backFixedToCarcass ?? false;
   const hasDivider = has("Vertical Division");
   const dividerCount = hasDivider ? Math.max(1, flags.dividerCount ?? 1) : 0;
 
@@ -662,8 +671,9 @@ export function generateSteps(
           helpers: [
             {
               title: "Why this matters",
-              content:
-                "On upper units, the bottom overlays the sides and is fixed last using 40mm screws. Do not attempt to fit it before the sides and back are in place.",
+              content: backFixedToCarcass
+                ? "On upper units, the bottom overlays the sides and is fixed using 40mm screws once the sides are in place. The back goes on after it."
+                : "On upper units, the bottom overlays the sides and is fixed last using 40mm screws. Do not attempt to fit it before the sides and back are in place.",
             },
             {
               title: "Professional tip",
@@ -677,26 +687,56 @@ export function generateSteps(
   }
 
   // ── Back ──
-  addStep(["Back"], "Secure the back panels to square the cabinet.", {
-    usesFittings: true,
-    helpers: [
-      {
-        title: "Before tightening",
-        content:
-          "With the cabinet still face-down, slide the back panel into the grooves until flush with the top. Measure diagonally — top-left to bottom-right, then top-right to bottom-left — both should match. Adjust gently until square, then fix.",
-      },
-      {
-        title: "Why this matters",
-        content:
-          "The back panel locks the cabinet's shape. Fixing it while out of square will cause door alignment issues later.",
-      },
-      {
-        title: "Professional tip",
-        content:
-          "Start with the centre screws, then work outwards to keep the back aligned. Once the back is fixed, stand the cabinet upright onto its feet.",
-      },
-    ],
-  });
+  // A thin back slides into grooves and squares the carcass before the top
+  // goes on. A structural back is cammed onto every edge of the carcass, so it
+  // waits until the top is fitted and closes the whole box.
+  const addBackStep = () => {
+    if (!backFixedToCarcass) {
+      addStep(["Back"], "Secure the back panels to square the cabinet.", {
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Before tightening",
+            content:
+              "With the cabinet still face-down, slide the back panel into the grooves until flush with the top. Measure diagonally — top-left to bottom-right, then top-right to bottom-left — both should match. Adjust gently until square, then fix.",
+          },
+          {
+            title: "Why this matters",
+            content:
+              "The back panel locks the cabinet's shape. Fixing it while out of square will cause door alignment issues later.",
+          },
+          {
+            title: "Professional tip",
+            content:
+              "Start with the centre screws, then work outwards to keep the back aligned. Once the back is fixed, stand the cabinet upright onto its feet.",
+          },
+        ],
+      });
+      return;
+    }
+
+    addStep(["Back"], "Fit the back panel to close and square the cabinet.", {
+      usesFittings: true,
+      helpers: [
+        {
+          title: "Before tightening",
+          content: `With the cabinet still face-down, lower the back panel onto the rear edges of the carcass. Measure diagonally — top-left to bottom-right, then top-right to bottom-left — both should match. Adjust until square, then lock the cams into the top, bottom and sides${hasDivider ? " and screw through into the dividers" : ""}.`,
+        },
+        {
+          title: "Why this matters",
+          content:
+            "This back is a full-thickness panel fixed onto every edge of the carcass rather than slid into grooves, so it goes on once every other panel is in place. It locks the cabinet's shape — fixing it while out of square will cause door alignment issues later.",
+        },
+        {
+          title: "Professional tip",
+          content:
+            "Locate the corners first, then work along each edge. Once the back is fixed, stand the cabinet upright onto its feet.",
+        },
+      ],
+    });
+  };
+
+  if (!backFixedToCarcass) addBackStep();
 
   // ── Overlay top (AFTER back, BEFORE rear brace / wall bar) ──
   if (topOverlaysSides) {
@@ -718,8 +758,9 @@ export function generateSteps(
         helpers: [
           {
             title: "Why this matters",
-            content:
-              "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place, but before the wall bar. Do not attempt to fit it earlier.",
+            content: backFixedToCarcass
+              ? "On this unit, the top overlays the side panels, so it goes on once the sides are in place. The back is fitted after it to close the cabinet."
+              : "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place, but before the wall bar. Do not attempt to fit it earlier.",
           },
           {
             title: "Before tightening",
@@ -730,6 +771,9 @@ export function generateSteps(
       }
     );
   }
+
+  // ── Structural back (AFTER the top, which it is cammed to) ──
+  if (backFixedToCarcass) addBackStep();
 
   // ── Rear brace (MUST be after Back) ──
   if (has("Rear Brace")) {
