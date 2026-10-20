@@ -2079,6 +2079,44 @@ export class AssemblyGuideController {
   /** Panels per active step, and the meshes behind each list line */
   private _stepParts: StepPart[][] = [];
   private _stepPartMeshes: Map<string, PartMesh[]>[] = [];
+  // Every mesh name carries the export's trailing index (see buildStepParts)
+  private _namesIndexed = false;
+
+  /** The name printed on a board's label */
+  private boardLabel(part: PartMesh): string {
+    const name = part.name.trim();
+    return this._namesIndexed ? exportBaseName(name) : name;
+  }
+
+  /**
+   * Describe a tapped mesh the way the step parts list does: board label and
+   * W × H × T. Hardware is named after whichever panel the export wrote last,
+   * so it is described by what it is rather than by that misleading name.
+   * Returns null for meshes the guide does not know.
+   */
+  describePart(meshInstance: any): {
+    label: string;
+    width: number;
+    height: number;
+    thickness: number;
+  } | null {
+    const part = this.allParts.find(
+      (p) => p.threeMesh.userData?.originalMeshInstance === meshInstance
+    );
+    if (!part) return null;
+    if (part.attachedTo) {
+      return {
+        label: `Handle / knob on ${this.boardLabel(part.attachedTo)}`,
+        width: 0,
+        height: 0,
+        thickness: 0,
+      };
+    }
+    if (part.isFitting) {
+      return { label: "Fitting", width: 0, height: 0, thickness: 0 };
+    }
+    return { label: this.boardLabel(part), ...this.getBoardSize(part) };
+  }
 
   /**
    * Group each step's panels by label and size for the wizard's parts list.
@@ -2091,11 +2129,10 @@ export class AssemblyGuideController {
     // strip when every name carries a distinct index, so a model whose names
     // are already the labels keeps e.g. "Plinth 1" whole.
     const indices = this.allParts.map((p) => /\s(\d+)$/.exec(p.name.trim())?.[1]);
-    const indexed =
+    this._namesIndexed =
       indices.every((i) => i !== undefined) &&
       new Set(indices).size === indices.length;
-    const labelOf = (p: PartMesh) =>
-      indexed ? exportBaseName(p.name.trim()) : p.name.trim();
+    const labelOf = (p: PartMesh) => this.boardLabel(p);
 
     this._stepParts = [];
     this._stepPartMeshes = [];

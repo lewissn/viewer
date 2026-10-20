@@ -212,6 +212,17 @@ export default function ProjectClient({ project }: Props) {
             return;
           }
           const mi = ud.originalMeshInstance;
+          // Same label and W × H × T as the step's parts list
+          const described = controller.describePart(mi);
+          if (described) {
+            setTappedPart({
+              name: described.label,
+              width: described.width,
+              height: described.height,
+              depth: described.thickness,
+            });
+            return;
+          }
           const name =
             mi.node?.GetName?.() ||
             mi.GetMesh?.()?.GetName?.() ||
