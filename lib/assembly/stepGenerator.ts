@@ -798,6 +798,9 @@ export function generateSteps(
     ],
   });
 
+  // ── Shelves (removable; in while the front is still open to see them) ──
+  addStep(["Shelf"], "Insert the shelves.");
+
   // ── Doors ──
   addStep(["Door"], "Fit the doors to the carcass.", {
     usesFittings: true,
@@ -854,11 +857,6 @@ export function generateSteps(
       },
     ],
   });
-
-  // ── Shelves (removable, not fixed) ──
-  if (has("Shelf")) {
-    addStep(["Shelf"], "Insert the shelves.");
-  }
 
   // ── Fillers ──
   const fillerKeys: GroupKey[] = [];

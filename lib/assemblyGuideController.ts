@@ -136,10 +136,31 @@ interface PartMesh {
   attachedTo?: PartMesh;
 }
 
+/** One line of a step's parts list: the panels that share a label and size */
+export interface StepPart {
+  /** Unique within its step; pass to highlightStepPart() */
+  id: string;
+  /** Name as printed on the board's label, e.g. "Fixed Shelf [2]" */
+  label: string;
+  quantity: number;
+  /**
+   * Board size in mm from the mesh bounds. Thickness is the thinnest side;
+   * height is the vertical side (front to back for a horizontal panel).
+   */
+  width: number;
+  height: number;
+  thickness: number;
+}
+
 export interface ControllerState {
   currentStep: number; // -1 = intro, 0..N-1 = steps, N = complete
   totalSteps: number;
   activeSteps: AssemblyStep[]; // steps with parts (skips empty)
+  /**
+   * Panels fitted in each step, parallel to activeSteps (dynamic mode only).
+   * Fittings and handles are left out.
+   */
+  stepParts?: StepPart[][];
   isAnimating: boolean;
   /** Context-aware build summary (dynamic mode only) */
   cabinetSummary?: CabinetBuildSummary;
@@ -394,6 +415,9 @@ export class AssemblyGuideController {
       this._stepGroupKeys.push(step.groupKeys);
       this._stepDrawerModes.push(step.drawerMode);
     }
+
+    // Parts list per step, for the wizard
+    this.buildStepParts();
 
     console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
 
@@ -1852,6 +1876,7 @@ export class AssemblyGuideController {
       cabinetSummary: this._cabinetSummary,
       detectedGroups: this._detectedGroups,
       validationIssues: this._validationIssues,
+      stepParts: this._dynamicMode ? this._stepParts : undefined,
     };
   }
 
@@ -2047,6 +2072,107 @@ export class AssemblyGuideController {
     this.clearHighlight();
     this.showAllParts();
     this.renderViewer();
+  }
+
+  // ── Step parts list ──
+
+  /** Panels per active step, and the meshes behind each list line */
+  private _stepParts: StepPart[][] = [];
+  private _stepPartMeshes: Map<string, PartMesh[]>[] = [];
+
+  /**
+   * Group each step's panels by label and size for the wizard's parts list.
+   * The list follows what the step shows: one drawer while drawers are
+   * assembled, then only the fronts once the finished drawers go in.
+   */
+  private buildStepParts() {
+    // Per-cabinet exports suffix every object with its index ("Back 4",
+    // "Door 1 (Double) [1] 9"); the board label is the name without it. Only
+    // strip when every name carries a distinct index, so a model whose names
+    // are already the labels keeps e.g. "Plinth 1" whole.
+    const indices = this.allParts.map((p) => /\s(\d+)$/.exec(p.name.trim())?.[1]);
+    const indexed =
+      indices.every((i) => i !== undefined) &&
+      new Set(indices).size === indices.length;
+    const labelOf = (p: PartMesh) =>
+      indexed ? exportBaseName(p.name.trim()) : p.name.trim();
+
+    this._stepParts = [];
+    this._stepPartMeshes = [];
+    for (const step of this._activeSteps) {
+      let parts = this.getPartsForStep(step).filter(
+        (p) => !p.isFitting && !p.attachedTo
+      );
+      if (step.drawerMode === "insertAll") {
+        const fronts = parts.filter((p) => p.groupKey === "Drawer");
+        if (fronts.length > 0) parts = fronts;
+      }
+
+      const lines = new Map<string, { line: StepPart; meshes: PartMesh[] }>();
+      for (const part of parts) {
+        const label = labelOf(part);
+        const size = this.getBoardSize(part);
+        const id = `${label}|${size.width}|${size.height}|${size.thickness}`;
+        const entry = lines.get(id);
+        if (entry) {
+          entry.line.quantity++;
+          entry.meshes.push(part);
+        } else {
+          lines.set(id, {
+            line: { id, label, quantity: 1, ...size },
+            meshes: [part],
+          });
+        }
+      }
+      this._stepParts.push(Array.from(lines.values(), (e) => e.line));
+      this._stepPartMeshes.push(
+        new Map(Array.from(lines, ([id, e]) => [id, e.meshes]))
+      );
+    }
+  }
+
+  /** Width × height × thickness (mm, rounded) from a part's world bounds */
+  private getBoardSize(part: PartMesh): {
+    width: number;
+    height: number;
+    thickness: number;
+  } {
+    const b = this.getPartWorldBounds(part);
+    if (!b) return { width: 0, height: 0, thickness: 0 };
+    const axes = ["x", "y", "z"] as const;
+    const extent = (a: (typeof axes)[number]) => Math.round(b.max[a] - b.min[a]);
+    // World is Y-up: thinnest side is the thickness, the vertical side the
+    // height (or the depth when the board lies flat), what is left the width
+    const thin = axes.reduce((m, a) => (extent(a) < extent(m) ? a : m));
+    const tall = thin === "y" ? "z" : "y";
+    const wide = axes.find((a) => a !== thin && a !== tall)!;
+    return { width: extent(wide), height: extent(tall), thickness: extent(thin) };
+  }
+
+  /**
+   * Highlight one line of a step's parts list on the model, or clear the
+   * highlight with null. Ignored while a step is animating in.
+   */
+  highlightStepPart(stepIndex: number, partId: string | null) {
+    if (this._isAnimating) return;
+    const meshes = partId ? this._stepPartMeshes[stepIndex]?.get(partId) : undefined;
+    if (!meshes) {
+      this.clearHighlight();
+      return;
+    }
+    try {
+      const focusColor = new this.OV.RGBColor(0, 113, 227);
+      const focus = new Set(
+        meshes.map((p) => p.threeMesh.userData?.originalMeshInstance)
+      );
+      this.viewerEngine.SetMeshesHighlight(focusColor, (userData: any) => {
+        const mi = userData?.originalMeshInstance;
+        return mi ? focus.has(mi) : false;
+      });
+      this.renderViewer();
+    } catch {
+      // Non-critical
+    }
   }
 
   // ── Admin guide overrides ──
