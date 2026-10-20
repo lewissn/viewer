@@ -37,8 +37,8 @@ interface PlannedUpload {
 }
 
 /**
- * Upload every model and texture, parse every CSV, and return cabinet
- * instances ready to save.
+ * Upload every model and texture, parse every CSV (or take the prepared parts
+ * of a split cabinet), and return cabinet instances ready to save.
  */
 export async function uploadAndBuildCabinets(
   projectId: string,
@@ -114,11 +114,18 @@ export async function uploadAndBuildCabinets(
     const cab = cabinets[i];
     const cabinetId = cabinetIds[i];
 
-    const csvText = await cab.csv.data.text();
-    const { parts, fittings, warnings: csvWarnings } = parseCabinetCsv(csvText);
+    // A cabinet split from a project model comes with its parts and fittings
+    // already worked out; a per-cabinet export has them in its CSV.
+    const { parts, fittings, warnings: csvWarnings } = cab.csv
+      ? parseCabinetCsv(await cab.csv.data.text())
+      : (cab.prepared ?? { parts: [], fittings: [], warnings: [] });
 
     if (parts.length === 0) {
-      warnings.push(`${cab.code}: no parts found in ${fileNameOf(cab.csv.path)}.`);
+      warnings.push(
+        cab.csv
+          ? `${cab.code}: no parts found in ${fileNameOf(cab.csv.path)}.`
+          : `${cab.code}: no parts found.`
+      );
     }
     for (const w of csvWarnings) {
       warnings.push(`${cab.code}: ${w}`);

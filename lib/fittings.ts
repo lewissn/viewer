@@ -301,6 +301,34 @@ export function getCanonicalPart(partId: string): CanonicalPart | undefined {
   return CANONICAL_PARTS[partId];
 }
 
+/** Upper-case and collapse whitespace: "Gabrielle  Knob - Brass" -> "GABRIELLE KNOB - BRASS" */
+function aliasKey(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+// Index once by the normalised key so lookups tolerate spacing and case
+const ALIAS_INDEX = new Map<string, AliasEntry>(
+  Object.entries(ALIASES).map(([name, entry]) => [aliasKey(name), entry])
+);
+
+/**
+ * Find the alias for an ERP fitting name. Tries the exact (normalised) name,
+ * then the name without PolyBoard's trailing "(*)" / "(**)" variant markers —
+ * "HAFELE PLASTIC LEG (VD) 100 (*)" is the same leg as the unmarked one.
+ */
+function findAlias(erpName: string): AliasEntry | undefined {
+  const key = aliasKey(erpName);
+  const exact = ALIAS_INDEX.get(key);
+  if (exact) return exact;
+  const unmarked = key.replace(/(\s*\(\*+\))+$/, "");
+  return unmarked !== key ? ALIAS_INDEX.get(unmarked) : undefined;
+}
+
+/** Whether an ERP fitting name maps to anything (including a deliberate IGNORE). */
+export function isKnownFitting(erpName: string): boolean {
+  return findAlias(erpName) !== undefined;
+}
+
 /**
  * Resolve a single ERP fitting name + quantity into canonical parts.
  * Returns an array of resolved fittings (may be multiple per alias).
@@ -310,8 +338,7 @@ export function resolveErpFitting(
   erpName: string,
   erpQty: number
 ): ResolvedFitting[] {
-  const key = erpName.trim().toUpperCase();
-  const alias = ALIASES[key];
+  const alias = findAlias(erpName);
 
   if (!alias || alias === "IGNORE") return [];
 
@@ -346,11 +373,25 @@ export function resolveErpFitting(
 export function resolveFittings(
   rawFittings: { name: string; qty: number }[]
 ): ResolvedFitting[] {
+  return resolveFittingsWithReport(rawFittings).fittings;
+}
+
+/**
+ * As resolveFittings, also listing the names no alias covers so the import
+ * can warn about them instead of dropping them silently.
+ */
+export function resolveFittingsWithReport(
+  rawFittings: { name: string; qty: number }[]
+): { fittings: ResolvedFitting[]; unresolved: { name: string; qty: number }[] } {
   const totals = new Map<string, ResolvedFitting>();
+  const unresolved: { name: string; qty: number }[] = [];
 
   for (const raw of rawFittings) {
-    const resolved = resolveErpFitting(raw.name, raw.qty);
-    for (const r of resolved) {
+    if (!isKnownFitting(raw.name)) {
+      unresolved.push(raw);
+      continue;
+    }
+    for (const r of resolveErpFitting(raw.name, raw.qty)) {
       const existing = totals.get(r.partId);
       if (existing) {
         existing.qty = Math.round((existing.qty + r.qty) * 100) / 100;
@@ -360,8 +401,12 @@ export function resolveFittings(
     }
   }
 
-  // Sort by category, then by label
-  return Array.from(totals.values()).sort((a, b) => {
+  return { fittings: sortFittings(Array.from(totals.values())), unresolved };
+}
+
+/** Sort by category, then by label */
+export function sortFittings(fittings: ResolvedFitting[]): ResolvedFitting[] {
+  return fittings.sort((a, b) => {
     if (a.category !== b.category) return a.category.localeCompare(b.category);
     return a.label.localeCompare(b.label);
   });

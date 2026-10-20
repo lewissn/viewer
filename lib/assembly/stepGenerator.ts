@@ -18,6 +18,8 @@
  * - Structural back: a full-thickness back cammed onto the carcass goes on
  *   last, after the top, rather than sliding into grooves before it
  * - Drawers: separate step, not in carcass
+ * - Hanging rail: inside the finished carcass, before the doors
+ * - Pelmet / skirting: installation trim, last
  */
 
 import type { StepHelper } from "../assemblyGuides";
@@ -784,6 +786,21 @@ export function generateSteps(
     );
   }
 
+  // ── Hanging rail (inside the finished carcass, before the doors close it) ──
+  addStep(["Hanging Rail"], "Fit the hanging rail between the sides.", {
+    usesFittings: true,
+    helpers: [
+      {
+        title: "Before tightening",
+        content:
+          "Screw the rail end supports to the inside of the side panels at the pre-drilled positions, then seat the rail in them. Check the rail is level before fully tightening.",
+      },
+    ],
+  });
+
+  // ── Shelves (removable; in while the front is still open to see them) ──
+  addStep(["Shelf"], "Insert the shelves.");
+
   // ── Doors ──
   addStep(["Door"], "Fit the doors to the carcass.", {
     usesFittings: true,
@@ -841,16 +858,11 @@ export function generateSteps(
     ],
   });
 
-  // ── Shelves (removable, not fixed) ──
-  if (has("Shelf")) {
-    addStep(["Shelf"], "Insert the shelves.");
-  }
-
   // ── Fillers ──
   const fillerKeys: GroupKey[] = [];
   if (has("Filler - Side")) fillerKeys.push("Filler - Side");
   if (has("Filler - Front")) fillerKeys.push("Filler - Front");
-  if (has("Filler") && fillerKeys.length === 0) fillerKeys.push("Filler");
+  if (has("Filler")) fillerKeys.push("Filler");
   if (fillerKeys.length > 0) {
     addStep(fillerKeys, "Fit any filler panels as required.");
   }
@@ -859,6 +871,25 @@ export function generateSteps(
   if (has("Hinge")) {
     addStep(["Hinge"], "Fit the hinges.");
   }
+
+  // ── Installation trim (on site, once the cabinet is in position) ──
+  addStep(
+    ["Pelmet", "Skirting"],
+    has("Pelmet") && has("Skirting")
+      ? "Fit the pelmet and skirting once the cabinet is in position."
+      : has("Pelmet")
+        ? "Fit the pelmet once the cabinet is in position."
+        : "Fit the skirting once the cabinet is in position.",
+    {
+      helpers: [
+        {
+          title: "Why this matters",
+          content:
+            "These trim pieces run along the wall or between units, so they go on once the cabinet is standing in its final position and level.",
+        },
+      ],
+    }
+  );
 
   return steps;
 }

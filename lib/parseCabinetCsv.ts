@@ -12,7 +12,7 @@
  * import), so a cabinet parses the same however it reaches us.
  */
 
-import { resolveFittings, type ResolvedFitting } from "./fittings";
+import { resolveFittingsWithReport, type ResolvedFitting } from "./fittings";
 
 export interface CabinetCsvResult {
   parts: string[];
@@ -114,5 +114,10 @@ export function parseCabinetCsv(csvText: string, column = 4): CabinetCsvResult {
     }
   }
 
-  return { parts, fittings: resolveFittings(rawFittings), rawFittings, warnings };
+  const { fittings, unresolved } = resolveFittingsWithReport(rawFittings);
+  for (const u of unresolved) {
+    warnings.push(`Unrecognised fitting "${u.name}" (×${u.qty}) — left off the fittings list.`);
+  }
+
+  return { parts, fittings, rawFittings, warnings };
 }

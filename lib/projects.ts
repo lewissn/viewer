@@ -1,14 +1,38 @@
 import type { ResolvedFitting } from "./fittings";
+import type { StepHelper } from "./assemblyGuides";
 
 /**
  * Project & Cabinet Instance types for customer assembly guides.
  */
 
+/**
+ * One step of an admin-edited guide.
+ *
+ * A step is identified by the part groups it assembles (plus its drawer mode,
+ * since the drawer groups appear twice: once to build a drawer and once to
+ * slide them all in), never by its position — so an edited guide still lines
+ * up after the model or the step generator changes.
+ */
+export interface StepOverride {
+  groupKeys: string[];
+  drawerMode?: "assembleFirst" | "insertAll";
+  /** Replaces the generated instruction. Omitted = automatic text. */
+  copy?: string;
+  /** Replaces the generated helper blocks. Omitted = automatic helpers. */
+  helpers?: StepHelper[];
+  /** Left out of the customer guide */
+  hidden?: boolean;
+}
+
 export interface GuideOverrides {
-  /** Override step ordering by groupKey list */
-  stepOrder?: string[];
-  /** Override step copy text, keyed by groupKey */
-  stepCopy?: Record<string, string>;
+  /**
+   * Admin-edited step list. When present it replaces the generated order.
+   * Groups the model has that no step mentions are appended as their own
+   * steps, so nothing disappears if the model changes.
+   */
+  steps?: StepOverride[];
+  /** Mesh names left out of the guide entirely (e.g. a stray mesh) */
+  excludedParts?: string[];
   /** Override explode offsets per groupKey */
   explodeOffsets?: Record<string, [number, number, number]>;
   /** Upper unit / dresser: bottom overlays sides, must be fitted AFTER sides */
