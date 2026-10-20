@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { CabinetInstance } from "@/lib/projects";
+import type { CabinetInstance, GuideOverrides } from "@/lib/projects";
 import { makeCabinetId } from "@/lib/projects";
 import { classifyPart } from "@/lib/classifyPart";
+import GuideEditor from "./guide-editor";
 
 interface ProjectData {
   id: string;
@@ -29,6 +30,9 @@ export default function ProjectEditorPage() {
 
   // Add cabinet form
   const [newCabinetName, setNewCabinetName] = useState("");
+
+  // Cabinet whose guide is open in the guide editor
+  const [editingGuideId, setEditingGuideId] = useState<string | null>(null);
 
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ||
@@ -111,37 +115,62 @@ export default function ProjectEditorPage() {
     setNewCabinetName("");
   }
 
+  // Write the project to the database. Resolves to an error message, or null.
+  async function persistProject(data: ProjectData): Promise<string | null> {
+    try {
+      const res = await fetch("/api/projects/upsert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: data.project_id,
+          projectName: data.project_name,
+          customerName: data.customer_name,
+          cabinets: data.cabinets,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return `Error: ${body.error ?? `save failed (${res.status})`}`;
+      }
+      return null;
+    } catch {
+      return "Network error. Please try again.";
+    }
+  }
+
   // Save project
   async function handleSave() {
     if (!project) return;
     setSaving(true);
     setSaveMsg("");
 
-    try {
-      const res = await fetch("/api/projects/upsert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.project_id,
-          projectName: project.project_name,
-          customerName: project.customer_name,
-          cabinets: project.cabinets,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setSaveMsg(`Error: ${data.error}`);
-        return;
-      }
-
-      setSaveMsg("Saved successfully.");
-      setTimeout(() => setSaveMsg(""), 3000);
-    } catch {
-      setSaveMsg("Network error. Please try again.");
-    } finally {
-      setSaving(false);
+    const error = await persistProject(project);
+    setSaving(false);
+    if (error) {
+      setSaveMsg(error);
+      return;
     }
+    setSaveMsg("Saved successfully.");
+    setTimeout(() => setSaveMsg(""), 3000);
+  }
+
+  // Save a cabinet's guide from the guide editor. Saves the whole project,
+  // like "Save Project", since cabinets are stored as one list.
+  async function handleSaveGuide(
+    cabinetId: string,
+    guideOverrides: GuideOverrides
+  ): Promise<string | null> {
+    if (!project) return "Project not loaded.";
+    const next = {
+      ...project,
+      cabinets: project.cabinets.map((c) =>
+        c.cabinetId === cabinetId ? { ...c, guideOverrides } : c
+      ),
+    };
+    const error = await persistProject(next);
+    if (!error) setProject(next);
+    return error;
   }
 
   // Update a cabinet field
@@ -198,6 +227,13 @@ export default function ProjectEditorPage() {
   }
 
   const customerUrl = `${baseUrl}/project/${project.project_id}`;
+
+  const editingCabinet =
+    project.cabinets.find((c) => c.cabinetId === editingGuideId) ?? null;
+  const cabinetLabel = (cab: CabinetInstance) =>
+    project.cabinets.filter((c) => c.cabinetName === cab.cabinetName).length > 1
+      ? `${cab.cabinetName} (${cab.cabinetIndex + 1})`
+      : cab.cabinetName;
 
   return (
     <div className="min-h-screen bg-[#fafafa] px-4 py-8 sm:px-6">
@@ -327,6 +363,39 @@ export default function ProjectEditorPage() {
                       className="text-[12px] text-[#dc2626] hover:underline"
                     >
                       Remove
+                    </button>
+                  </div>
+
+                  {/* Assembly guide */}
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-[#f5f5f7] px-3 py-2">
+                    <p className="min-w-0 text-[12px]">
+                      <span className="font-medium text-[#1d1d1f]">
+                        Assembly guide
+                      </span>{" "}
+                      {hasGuideEdits(cab.guideOverrides) ? (
+                        <span className="text-[#0071e3]">
+                          &middot; Edited
+                          {cab.guideOverrides?.steps &&
+                            ` (${cab.guideOverrides.steps.filter((s) => !s.hidden).length} steps)`}
+                          {cab.guideOverrides?.excludedParts?.length
+                            ? ` · ${cab.guideOverrides.excludedParts.length} excluded`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span className="text-[#86868b]">&middot; Automatic</span>
+                      )}
+                    </p>
+                    <button
+                      onClick={() => setEditingGuideId(cab.cabinetId)}
+                      disabled={!cab.modelFileUrl?.trim()}
+                      title={
+                        cab.modelFileUrl?.trim()
+                          ? undefined
+                          : "Add a model file URL first"
+                      }
+                      className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-[#1d1d1f] border border-[#d2d2d7] hover:bg-[#fafafa] transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      Edit guide
                     </button>
                   </div>
 
@@ -569,6 +638,21 @@ export default function ProjectEditorPage() {
           The Cabinet Shop &mdash; Internal Tool
         </p>
       </div>
+
+      {editingCabinet && (
+        <GuideEditor
+          key={editingCabinet.cabinetId}
+          cabinet={editingCabinet}
+          title={cabinetLabel(editingCabinet)}
+          onSave={(o) => handleSaveGuide(editingCabinet.cabinetId, o)}
+          onClose={() => setEditingGuideId(null)}
+        />
+      )}
     </div>
   );
+}
+
+/** Whether a cabinet's guide differs from the automatic one (beyond the construction flags) */
+function hasGuideEdits(o?: GuideOverrides): boolean {
+  return !!o?.steps || (o?.excludedParts?.length ?? 0) > 0;
 }
