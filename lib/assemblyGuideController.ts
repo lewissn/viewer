@@ -18,8 +18,10 @@ import {
   classifyPart,
   extractDrawerIndex,
   generateGuideFromGroups,
+  type GeneratedStep,
 } from "./classifyPart";
 import type { GuideOverrides } from "./projects";
+import { resolveGuideSteps } from "./assembly/applyOverrides";
 import {
   buildCabinetSummary,
   type CabinetBuildSummary,
@@ -196,6 +198,8 @@ export class AssemblyGuideController {
     console.log("[AssemblyGuide] Initialising (dynamic mode)...");
 
     this.collectParts();
+    // Admin-excluded meshes (e.g. a stray mesh) take no part in the guide
+    this.excludeParts(overrides?.excludedParts);
 
     if (this.allParts.length === 0) {
       console.warn("[AssemblyGuide] No mesh parts found! Steps will be empty.");
@@ -288,7 +292,7 @@ export class AssemblyGuideController {
     this._stepGroupKeys = [];
     this._stepDrawerModes = [];
 
-    for (const step of generated.steps) {
+    for (const step of this.applyGuideOverrides(generated.steps, overrides)) {
       // Only include if group has parts
       const hasParts = step.groupKeys.some(
         (k) => (this.partGroups.get(k)?.length ?? 0) > 0
@@ -1686,6 +1690,64 @@ export class AssemblyGuideController {
     this.clearHighlight();
     this.showAllParts();
     this.renderViewer();
+  }
+
+  // ── Admin guide overrides ──
+
+  /** Generated steps before admin overrides (for the guide editor) */
+  private _generatedSteps: GeneratedStep[] = [];
+
+  /** Drop admin-excluded meshes from the guide and hide them */
+  private excludeParts(names?: string[]) {
+    const excluded = new Set((names ?? []).map((n) => n.trim()));
+    for (const part of this.allParts) {
+      // Re-show parts a previous init excluded (the editor re-inits in place)
+      this.setPartVisible(part, !excluded.has(part.name.trim()));
+    }
+    if (excluded.size === 0) return;
+    this.allParts = this.allParts.filter((p) => !excluded.has(p.name.trim()));
+    this.renderViewer();
+  }
+
+  /**
+   * Apply the cabinet's edited step list (reorder, merge/split, copy, hidden
+   * steps) to the generated steps. See lib/assembly/applyOverrides.ts.
+   */
+  private applyGuideOverrides(
+    steps: GeneratedStep[],
+    overrides?: GuideOverrides
+  ): GeneratedStep[] {
+    const present = Array.from(this.partGroups)
+      .filter(([, parts]) => parts.length > 0)
+      .map(([key]) => key);
+    this._generatedSteps = steps.filter((s) =>
+      s.groupKeys.some((k) => present.includes(k))
+    );
+    if (!overrides?.steps) return this._generatedSteps;
+    const resolved = resolveGuideSteps(this._generatedSteps, overrides, present);
+    console.log(
+      "[AssemblyGuide] Admin step overrides applied",
+      resolved.appendedGroups.length
+        ? { appendedGroups: resolved.appendedGroups }
+        : "",
+      resolved.staleGroups.length ? { staleGroups: resolved.staleGroups } : ""
+    );
+    return resolved.steps.filter((s) => !s.hidden);
+  }
+
+  /**
+   * Generated steps (before overrides) and the part names in each group,
+   * for the admin guide editor. Dynamic mode only.
+   */
+  getEditorSnapshot(): {
+    generatedSteps: GeneratedStep[];
+    groupParts: Record<string, string[]>;
+  } {
+    const groupParts: Record<string, string[]> = {};
+    for (const [key, parts] of this.partGroups) {
+      if (parts.length > 0) groupParts[key] = parts.map((p) => p.name);
+    }
+    return { generatedSteps: this._generatedSteps, groupParts };
   }
 
   // ── Listeners ──
