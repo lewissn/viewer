@@ -25,6 +25,8 @@ export default function ProjectClient({ project }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const controllerRef = useRef<AssemblyGuideController | null>(null);
+  // Increments per cabinet load, so a superseded load can bail out
+  const loadIdRef = useRef(0);
 
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -94,7 +96,13 @@ export default function ProjectClient({ project }: Props) {
         isAnimating: false,
       });
 
+      const loadId = ++loadIdRef.current;
       const OV = await import("online-3d-viewer");
+      // A newer load started while the viewer library was loading (a second
+      // cabinet click, or React re-running the effect) — let that one win,
+      // or both would mount a viewer and the stale one stays on top.
+      if (loadId !== loadIdRef.current || !containerRef.current) return;
+      containerRef.current.innerHTML = "";
 
       const controller = new AssemblyGuideController();
       controllerRef.current = controller;
