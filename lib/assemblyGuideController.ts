@@ -18,12 +18,19 @@ import {
   classifyPart,
   extractDrawerIndex,
   generateGuideFromGroups,
+  type GeneratedStep,
 } from "./classifyPart";
 import type { GuideOverrides } from "./projects";
 import {
   buildCabinetSummary,
   type CabinetBuildSummary,
 } from "./assembly/cabinetSummary";
+import {
+  repairStepOrder,
+  type ValidationIssue,
+  type ValidationOptions,
+  type ValidationPart,
+} from "./assembly/validateSteps";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,6 +63,63 @@ const DRAWER_GROUP_KEYS = new Set([
 /** Groups a handle or knob can be mounted on */
 const FRONT_GROUP_KEYS = new Set(["Door", "Drawer"]);
 
+/** How each kind of part is treated when the step order is validated */
+export const VALIDATION_OPTIONS: ValidationOptions = {
+  // Doors swing open and drawers pull out, so they never trap anything
+  openableGroups: ["Door", ...DRAWER_GROUP_KEYS],
+  // Removable shelves sit on pins and hanging rails drop into brackets —
+  // both are angled in past face frames and rails
+  looseGroups: ["Shelf", "Hanging Rail"],
+  // Fixed to the wall or the next unit rather than to this cabinet
+  freestandingGroups: ["Pelmet", "Skirting", "Filler", "Filler - Side", "Filler - Front"],
+};
+
+/** Explode direction for a group with no configured offset */
+const DEFAULT_EXPLODE_OFFSET: [number, number, number] = [0, 0.5, 0.5];
+
+/**
+ * Explode distance as a fraction of the model's bounding radius. Calibrated so
+ * a typical 2m cabinet (radius about 1.15m) explodes the 480mm every model has
+ * used so far; smaller and larger cabinets now scale with their size.
+ */
+const EXPLODE_RADIUS_FRACTION = 0.415;
+
+/** Explode distance used when the model's size cannot be measured */
+const FALLBACK_EXPLODE_DISTANCE = 480;
+
+/** Fallback travel directions tried when a part's own path in is blocked */
+const AXIS_DIRECTIONS: Vec3[] = [
+  { x: 1, y: 0, z: 0 },
+  { x: -1, y: 0, z: 0 },
+  { x: 0, y: 1, z: 0 },
+  { x: 0, y: -1, z: 0 },
+  { x: 0, y: 0, z: 1 },
+  { x: 0, y: 0, z: -1 },
+];
+
+/** Strip the export's trailing object index: "Fixed Shelf [4] 75" -> "Fixed Shelf [4]" */
+function exportBaseName(name: string): string {
+  return name.replace(/\s+\d+$/, "");
+}
+
+/**
+ * Neutral copy for a step the validator had to move, e.g. "Fit the centre
+ * fixed shelves and back."
+ */
+function describeGroups(keys: string[], count: (key: string) => number = () => 1): string {
+  const names = keys.map((k) => {
+    const [main, sub] = k.split(" - ");
+    const name = (sub ? `${sub} ${main}` : main).toLowerCase();
+    if (count(k) < 2) return name;
+    return name.endsWith("shelf") ? `${name.slice(0, -5)}shelves` : `${name}s`;
+  });
+  const list =
+    names.length > 1
+      ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+      : names[0];
+  return `Fit the ${list}.`;
+}
+
 /** A THREE.Mesh with its metadata */
 interface PartMesh {
   threeMesh: any; // THREE.Mesh
@@ -80,6 +144,12 @@ export interface ControllerState {
   cabinetSummary?: CabinetBuildSummary;
   /** All detected group keys (dynamic mode only) */
   detectedGroups?: string[];
+  /**
+   * Problems the geometric validator could not fix by reordering (dynamic
+   * mode only). `step` indexes activeSteps. Empty when every step is
+   * physically valid.
+   */
+  validationIssues?: ValidationIssue[];
 }
 
 export type StateListener = (state: ControllerState) => void;
@@ -136,6 +206,9 @@ export class AssemblyGuideController {
   private _assembledKeys: Set<string> = new Set(); // prefixes (legacy) or groupKeys (dynamic)
   private _cabinetSummary?: CabinetBuildSummary;
   private _detectedGroups?: string[];
+  private _validationIssues?: ValidationIssue[];
+  // Model-space distance parts are exploded by (dynamic mode)
+  private _explodeDistance = FALLBACK_EXPLODE_DISTANCE;
 
   private listeners: StateListener[] = [];
   private animationFrameId: number | null = null;
@@ -212,6 +285,11 @@ export class AssemblyGuideController {
     // would join that panel's step and float in front of nothing.
     this.attachHandlesToFronts();
 
+    // Hardware the export named after the last panel (hinges, runners...)
+    // that is too big for the size check and not a handle: without this it
+    // joins that panel's step and floats wherever the hinge sits.
+    this.flagExportHardware();
+
     // Split bare "Face Frame" parts into Left/Right/Top by geometry
     // (dresser units have FF rails whose names don't say which panel they
     // belong to — tall rails go with the sides, wide rails with the top)
@@ -221,6 +299,10 @@ export class AssemblyGuideController {
     // (shelves trapped between two dividers have to be built into the divider
     // assembly before it goes onto the base panel)
     this.refineFixedShelfGroups();
+
+    // Full-thickness strips behind the back panels ("Double-Back" rails) are
+    // wall bars, not backs — they would otherwise read as a structural back
+    this.refineBackRails();
 
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
@@ -283,18 +365,20 @@ export class AssemblyGuideController {
     );
     this._detectedGroups = generated.detectedGroups;
 
+    // Only steps whose groups have parts
+    const withParts = generated.steps.filter((step) =>
+      step.groupKeys.some((k) => (this.partGroups.get(k)?.length ?? 0) > 0)
+    );
+
+    // Check the order against the model and repair what the rules missed
+    const planned = this.validateSteps(withParts, generated.explodeOffsets);
+
     // Convert generated steps to AssemblyStep format
     this._activeSteps = [];
     this._stepGroupKeys = [];
     this._stepDrawerModes = [];
 
-    for (const step of generated.steps) {
-      // Only include if group has parts
-      const hasParts = step.groupKeys.some(
-        (k) => (this.partGroups.get(k)?.length ?? 0) > 0
-      );
-      if (!hasParts) continue;
-
+    for (const step of planned) {
       this._activeSteps.push({
         prefixes: step.groupKeys,
         copy: step.copy,
@@ -905,6 +989,59 @@ export class AssemblyGuideController {
   }
 
   /**
+   * Move rails out of the "Back" group into "Rear Brace".
+   *
+   * Some exports name a strip that runs behind the back panels after the back
+   * ("Double-Back"): a full-thickness rail, a few inches tall, cammed between
+   * the sides like a wall bar. Left in the back group it is mistaken for a
+   * structural back and drags the real (grooved) backs' copy with it. A back
+   * part counts as a rail when it is as thick as the sides, its shorter face
+   * dimension is under a quarter of the cabinet's height (a genuine
+   * full-thickness back covers most of the height), and it sits behind the
+   * cabinet's other back panels.
+   */
+  private refineBackRails() {
+    const sides = this.allParts
+      .filter((p) => (p.groupKey === "Left Side" || p.groupKey === "Right Side") && !p.isFitting)
+      .map((p) => this.getPartWorldBounds(p))
+      .filter((b): b is { min: Vec3; max: Vec3 } => b !== null);
+    if (sides.length === 0) return;
+    const dims = (b: { min: Vec3; max: Vec3 }) =>
+      [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z].sort((p, q) => p - q);
+    const sideT = Math.max(...sides.map((b) => dims(b)[0]));
+    const height = Math.max(...sides.map((b) => dims(b)[2]));
+
+    const backs = this.allParts
+      .filter((p) => p.groupKey === "Back" && !p.isFitting)
+      .map((part) => ({ part, b: this.getPartWorldBounds(part) }))
+      .filter((x): x is { part: PartMesh; b: { min: Vec3; max: Vec3 } } => x.b !== null);
+    const isStrip = (b: { min: Vec3; max: Vec3 }) => {
+      const [t, minor] = dims(b);
+      return t >= sideT * 0.75 && minor < height * 0.25;
+    };
+    const panels = backs.filter((x) => !isStrip(x.b));
+    if (panels.length === 0) return;
+
+    // Depth axis: the back panels' thinnest
+    const axes = ["x", "y", "z"] as const;
+    const ext = (b: { min: Vec3; max: Vec3 }, a: (typeof axes)[number]) => b.max[a] - b.min[a];
+    const depth = axes.reduce((m, a) => (ext(panels[0].b, a) < ext(panels[0].b, m) ? a : m));
+    const mid = (b: { min: Vec3; max: Vec3 }) => (b.min[depth] + b.max[depth]) / 2;
+    const sidesMid =
+      sides.reduce((s, b) => s + mid(b), 0) / sides.length;
+    const backsMid = panels.reduce((s, x) => s + mid(x.b), 0) / panels.length;
+    const rearward = Math.sign(backsMid - sidesMid);
+
+    for (const { part, b } of backs) {
+      if (!isStrip(b)) continue;
+      // Behind the back panels, not a strip at the front of the unit
+      if (rearward === 0 || (mid(b) - backsMid) * rearward < 0) continue;
+      part.groupKey = "Rear Brace";
+      log(`Back rail: "${part.name}" (${dims(b)[1].toFixed(0)} tall) -> Rear Brace`);
+    }
+  }
+
+  /**
    * Flag small meshes as fittings (cams, screws, etc.) based on bounding size.
    * 3DS exports include fitting models named after panels — these are far smaller
    * than any panel and should be hidden during assembly steps.
@@ -1010,6 +1147,185 @@ export class AssemblyGuideController {
     }
   }
 
+  /**
+   * Flag the hardware at the end of the export as fittings.
+   *
+   * The exporter writes every panel first, then all the hardware, naming the
+   * hardware after whichever panel came last ("Fixed Shelf [4] 75" for a
+   * hinge). So the model ends with one run of objects sharing that panel's
+   * name: the panel itself (or several, for a repeated panel), then the
+   * hardware. Most hardware is small enough for the size check; the rest —
+   * hinges, runners — would otherwise join that panel's group and show up
+   * wherever it is mounted. Handles in the run are already attached to their
+   * door or drawer front and keep their place.
+   */
+  private flagExportHardware() {
+    const n = this.allParts.length;
+    if (n < 2) return;
+    const lastBase = exportBaseName(this.allParts[n - 1].name);
+    let start = n - 1;
+    while (start > 0 && exportBaseName(this.allParts[start - 1].name) === lastBase) {
+      start--;
+    }
+    // No small hardware in the run: the export has no hardware tail
+    if (!this.allParts.slice(start).some((p) => p.isFitting)) return;
+
+    // A board: two large dimensions, one small
+    const isBoard = (part: PartMesh) => {
+      const b = this.getPartWorldBounds(part);
+      if (!b) return false;
+      const [t, m] = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z].sort(
+        (p, q) => p - q
+      );
+      return t > 0 && m >= 2.5 * t;
+    };
+
+    // The panel(s) lead the run — the first is always the panel that named
+    // it, whatever its shape (a hanging rail) — and the hardware starts at
+    // the first part after it that is not a board.
+    let i = start + 1;
+    while (i < n && !this.allParts[i].isFitting && isBoard(this.allParts[i])) i++;
+    for (; i < n; i++) {
+      const part = this.allParts[i];
+      if (part.isFitting || part.attachedTo) continue;
+      part.isFitting = true;
+      log(`Export hardware: "${part.name}" (${part.groupKey}) flagged as a fitting`);
+    }
+  }
+
+  // ── Step validation ──
+
+  /** Rotate a direction from a part's local (parent) frame into world space */
+  private localToWorldDirection(part: PartMesh, d: Vec3): Vec3 {
+    const e = part.threeMesh.parent?.matrixWorld?.elements;
+    if (!e || e.length !== 16) return d;
+    return {
+      x: e[0] * d.x + e[4] * d.y + e[8] * d.z,
+      y: e[1] * d.x + e[5] * d.y + e[9] * d.z,
+      z: e[2] * d.x + e[6] * d.y + e[10] * d.z,
+    };
+  }
+
+  /**
+   * Check the rule-based steps against the model geometry (see
+   * assembly/validateSteps) and return the order to use.
+   *
+   * - Steps that fail are moved as little as possible until every step is
+   *   supported and insertable; steps that pass keep the rule-based order.
+   *   A moved step gets neutral copy, since its wording was written for its
+   *   old place.
+   * - A part whose explode direction would take it through a fitted panel is
+   *   re-pointed along a clear direction, so the animation shows a path the
+   *   customer can actually follow.
+   * - Whatever cannot be fixed, plus any part only the catch-all step
+   *   picked up, is kept in validationIssues and logged under ?debug.
+   */
+  private validateSteps(
+    steps: GeneratedStep[],
+    offsets: Record<string, [number, number, number]>
+  ): GeneratedStep[] {
+    const candidates = new Map<string, { part: PartMesh; local: Vec3[]; reach: number }>();
+    const vParts: ValidationPart[] = [];
+    this.allParts.forEach((part, i) => {
+      if (part.isFitting) return;
+      const box = this.getPartWorldBounds(part);
+      if (!box) return;
+      const [ox, oy, oz] = offsets[part.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
+      const local = [{ x: ox, y: oy, z: oz }, ...AXIS_DIRECTIONS];
+      const id = String(i);
+      candidates.set(id, { part, local, reach: Math.hypot(ox, oy, oz) });
+      vParts.push({
+        id,
+        name: part.name,
+        group: part.groupKey,
+        box,
+        directions: local.map((d) => this.localToWorldDirection(part, d)),
+      });
+    });
+
+    const fittings = this.allParts
+      .filter((p) => p.isFitting)
+      .map((p) => this.getPartWorldBounds(p))
+      .filter((b): b is { min: Vec3; max: Vec3 } => b !== null);
+
+    type Step = GeneratedStep & { subassembly?: boolean };
+    const initial: Step[] = steps.map((s) => ({
+      ...s,
+      subassembly: s.drawerMode === "assembleFirst",
+    }));
+    const repair = repairStepOrder<Step>(
+      vParts,
+      initial,
+      (group, from) => ({
+        groupKeys: [group],
+        copy: describeGroups([group]),
+        usesFittings: from.usesFittings,
+      }),
+      { ...VALIDATION_OPTIONS, fittings }
+    );
+
+    // Follow the clear paths the validator found
+    for (const [id, k] of repair.result.directionIndex) {
+      if (k === 0) continue;
+      const c = candidates.get(id);
+      if (!c) continue;
+      const dist = c.reach * this._explodeDistance;
+      const d = c.local[k];
+      const a = c.part.assembledPos;
+      c.part.explodedPos = { x: a.x + d.x * dist, y: a.y + d.y * dist, z: a.z + d.z * dist };
+      log(`Path: "${c.part.name}" arrives along (${d.x}, ${d.y}, ${d.z}) — its default path is blocked`);
+    }
+    // Handles travel with the front they are mounted on
+    for (const part of this.allParts) {
+      const front = part.attachedTo;
+      if (!front) continue;
+      part.explodedPos = {
+        x: part.assembledPos.x + front.explodedPos.x - front.assembledPos.x,
+        y: part.assembledPos.y + front.explodedPos.y - front.assembledPos.y,
+        z: part.assembledPos.z + front.explodedPos.z - front.assembledPos.z,
+      };
+    }
+
+    const planned: GeneratedStep[] = repair.steps.map((s) => {
+      const { subassembly: _sub, ...step } = s;
+      void _sub;
+      if (!repair.touched.has(s)) return step;
+      return {
+        ...step,
+        copy: describeGroups(step.groupKeys, (k) => this.partGroups.get(k)?.length ?? 1),
+        // Helpers explaining why the step comes where it did no longer apply
+        helpers: step.helpers?.filter(
+          (h) => h.title !== "Why this matters" && h.title !== "Getting started"
+        ),
+      };
+    });
+
+    const issues: ValidationIssue[] = [...repair.result.issues];
+    planned.forEach((step, i) => {
+      if (!step.leftover) return;
+      for (const key of step.groupKeys) {
+        for (const part of this.partGroups.get(key) ?? []) {
+          issues.push({ step: i, part: part.name, group: key, kind: "unplaced" });
+        }
+      }
+    });
+    issues.sort((p, q) => p.step - q.step);
+    this._validationIssues = issues;
+
+    console.log(
+      `[AssemblyGuide] Step validation: ${issues.length} issue(s)` +
+        (repair.moves.length ? `, reordered: ${repair.moves.join("; ")}` : "")
+    );
+    if (issues.length > 0) {
+      log(
+        "Validation issues:",
+        issues.map((i) => `step ${i.step + 1} ${i.kind}: ${i.part} (${i.group})`)
+      );
+    }
+
+    return planned;
+  }
+
   /** Group parts by step prefix (legacy mode) */
   private groupPartsByPrefix() {
     this.partGroups.clear();
@@ -1050,13 +1366,10 @@ export class AssemblyGuideController {
 
   /** Compute exploded positions — legacy prefix mode */
   private computeExplodedPositionsLegacy() {
-    let modelSize = 1;
-    try {
-      const sphere = this.viewerEngine.GetBoundingSphere(false);
-      modelSize = sphere.GetRadius();
-    } catch {
-      modelSize = 100;
-    }
+    // Legacy guides' distances were tuned against a model size of 100: the
+    // radius lookup they were written for never succeeded, so 100 is what
+    // every legacy guide has always used.
+    const modelSize = 100;
 
     const { distance, offsets } = this.guide!.explode;
     const baseDistance = distance * modelSize;
@@ -1084,18 +1397,20 @@ export class AssemblyGuideController {
   private computeExplodedPositionsDynamic(
     offsets: Record<string, [number, number, number]>
   ) {
-    let modelSize = 1;
+    let baseDistance = FALLBACK_EXPLODE_DISTANCE;
     try {
-      const sphere = this.viewerEngine.GetBoundingSphere(false);
-      modelSize = sphere.GetRadius();
+      const sphere = this.viewerEngine.GetBoundingSphere(() => true);
+      if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
+        baseDistance = EXPLODE_RADIUS_FRACTION * sphere.radius;
+      }
     } catch {
-      modelSize = 100;
+      // Keep the fallback distance
     }
-
-    const baseDistance = 4.8 * modelSize;
+    this._explodeDistance = baseDistance;
+    log(`Explode distance: ${baseDistance.toFixed(1)}`);
 
     for (const part of this.allParts) {
-      const dir = offsets[part.groupKey] ?? [0, 0.5, 0.5];
+      const dir = offsets[part.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
       part.explodedPos = {
         x: part.assembledPos.x + dir[0] * baseDistance,
         y: part.assembledPos.y + dir[1] * baseDistance,
@@ -1148,16 +1463,55 @@ export class AssemblyGuideController {
    * active build area without having to manually orbit/zoom — particularly
    * helpful on mobile where pinch-zoom precision is poor.
    *
-   * Uses the viewer's built-in visible-only bounding sphere; as parts are
-   * hidden/shown across steps, the framed area naturally tightens onto
-   * the active build region.
+   * Fits the parts visible right now, both where they are (parts about to
+   * animate in are still at their exploded positions) and where they will
+   * land, so nothing flies out of shot. As parts are hidden/shown across
+   * steps, the framed area tightens onto the active build region.
    */
   private frameVisibleParts(animate = true) {
     try {
-      const sphere = this.viewerEngine?.GetBoundingSphere?.(false);
-      if (sphere && typeof sphere.GetRadius === "function" && sphere.GetRadius() > 0) {
-        this.viewerEngine.FitSphereToWindow?.(sphere, animate);
+      const visibleParts = this.allParts.filter((p) => p.threeMesh.visible !== false);
+      if (visibleParts.length === 0) return;
+      const visible = new Set(
+        visibleParts.map((p) => p.threeMesh.userData?.originalMeshInstance)
+      );
+      // Where they are now, as the viewer measures it
+      const box = this.viewerEngine?.GetBoundingBox?.((userData: any) =>
+        visible.has(userData?.originalMeshInstance)
+      );
+      if (!box) return;
+      const min = { x: box.min.x, y: box.min.y, z: box.min.z };
+      const max = { x: box.max.x, y: box.max.y, z: box.max.z };
+      // ...and where the ones still moving will land
+      for (const part of visibleParts) {
+        const p = part.threeMesh.position;
+        const local = {
+          x: part.assembledPos.x - p.x,
+          y: part.assembledPos.y - p.y,
+          z: part.assembledPos.z - p.z,
+        };
+        if (local.x === 0 && local.y === 0 && local.z === 0) continue;
+        const b = this.getPartWorldBounds(part);
+        if (!b) continue;
+        const d = this.localToWorldDirection(part, local);
+        for (const a of ["x", "y", "z"] as const) {
+          min[a] = Math.min(min[a], b.min[a] + d[a]);
+          max[a] = Math.max(max[a], b.max[a] + d[a]);
+        }
       }
+      const radius = Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) / 2;
+      if (!(radius > 0) || !isFinite(radius)) return;
+      this.viewerEngine.FitSphereToWindow?.(
+        {
+          center: {
+            x: (min.x + max.x) / 2,
+            y: (min.y + max.y) / 2,
+            z: (min.z + max.z) / 2,
+          },
+          radius,
+        },
+        animate
+      );
     } catch {
       // Camera-fit is non-critical — model still renders without it.
     }
@@ -1492,6 +1846,7 @@ export class AssemblyGuideController {
       isAnimating: this._isAnimating,
       cabinetSummary: this._cabinetSummary,
       detectedGroups: this._detectedGroups,
+      validationIssues: this._validationIssues,
     };
   }
 
@@ -1669,6 +2024,7 @@ export class AssemblyGuideController {
           : undefined,
       currentStepIndex: targetStep,
     });
+    this.frameVisibleParts(false);
     this.renderViewer();
     this.notifyListeners();
   }

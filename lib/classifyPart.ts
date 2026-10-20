@@ -50,6 +50,9 @@ export function extractDrawerIndex(name: string): string | undefined {
   return m ? m[0] : undefined;
 }
 
+/** Drawer-type code after normalisation, e.g. "um d" (UM-D) or "45 d" (45-D) */
+const DRAWER_TYPE_RE = /(^| )([a-z]{1,3}|\d{1,3}) d( |$)/;
+
 /**
  * Classify a part name into a group key + optional subtype.
  * Rules are evaluated in priority order to prevent collisions
@@ -58,8 +61,9 @@ export function extractDrawerIndex(name: string): string | undefined {
 export function classifyPart(name: string): Classification {
   const norm = normalizeName(name);
 
-  // 1) DRAWERS — "um d" / "um-d" token takes absolute precedence
-  if (norm.includes("um d") || norm.includes("um-d")) {
+  // 1) DRAWERS — a drawer-type code ending in "-D" ("UM-D" undermount,
+  // "45-D", ...) takes absolute precedence
+  if (DRAWER_TYPE_RE.test(norm)) {
     if (norm.startsWith("left side")) return { groupKey: "Drawer Box - Left" };
     if (norm.startsWith("right side")) return { groupKey: "Drawer Box - Right" };
     if (norm.startsWith("back")) return { groupKey: "Drawer Box - Back" };
@@ -94,7 +98,18 @@ export function classifyPart(name: string): Classification {
     if (norm.startsWith("double back")) return { groupKey: "Back" };
     if (norm.startsWith("back panel")) return { groupKey: "Back" };
     if (norm.startsWith("back")) return { groupKey: "Back" };
+    // Split backs on tall units: a thin upper back above a fixed shelf and
+    // full-thickness lower backs below it
+    if (norm.startsWith("upper back")) return { groupKey: "Back" };
+    if (norm.startsWith("lower back")) return { groupKey: "Back" };
   }
+
+  // 5b) WARDROBE FITTINGS — fitted inside the finished carcass
+  if (norm.startsWith("hanging rail")) return { groupKey: "Hanging Rail" };
+
+  // 5c) INSTALLATION TRIM — fitted on site once the cabinet is in position
+  if (norm.startsWith("pelmet")) return { groupKey: "Pelmet" };
+  if (norm.startsWith("skirting")) return { groupKey: "Skirting" };
 
   // 6) REAR SUPPORTS (Rear Brace / Wall Bar)
   if (norm.startsWith("rear brace")) return { groupKey: "Rear Brace" };
@@ -136,6 +151,10 @@ export function classifyPart(name: string): Classification {
 
 // Offsets are [x, y, z] direction multipliers: X left(-)/right(+), Y down(-)/up(+), Z back(-)/front(+).
 // Each part starts at assembledPos + offset * baseDistance and animates TO assembledPos.
+// The axes are the model file's own: in PolyBoard .3ds exports (Z-up, which
+// the viewer turns upright) that makes Y the depth (front -, rear +) and Z the
+// height (down -, up +). The step validator re-points any part whose offset
+// would carry it through a panel that is already fitted.
 export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> = {
   Bottom: [0, -1, 0],
   Plinth: [0, -1.4, 0],
@@ -144,7 +163,9 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
   "Left Side": [-1, 0, 0],
   "Right Side": [1, 0, 0],
   Back: [0, 0, 1.2],
-  "Rear Brace": [0, 0.3, 0.8],
+  // Straight in from the back: wall bars go in after the back panel, between
+  // the sides they are cammed to
+  "Rear Brace": [0, 1, 0],
   Door: [0, -1.4, 0],
   "Counter Top": [0, 1.3, 0],
   "Face Frame": [0, 0, 1.0],
@@ -168,8 +189,14 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
   "Filler - Front": [0, 0, 1.0],
   Filler: [1.2, 0, 0.5],
   Hinge: [0, 0, 1.3],
+  "Hanging Rail": [0, -1, 0],
+  Pelmet: [0, 0, 1],
+  Skirting: [0, -1.4, 0],
   Other: [0, 0.5, 0.5],
 };
+
+/** Explode offset for a structural back: straight in from the rear */
+const STRUCTURAL_BACK_OFFSET: [number, number, number] = [0, 1.2, 0];
 
 // ── Guide generation ──
 
@@ -181,6 +208,12 @@ export interface GeneratedStep {
   drawerMode?: "assembleFirst" | "insertAll";
   helpers?: StepHelper[];
   usesFittings?: boolean;
+  /**
+   * Catch-all step holding groups the rule-based order has no place for, so
+   * no part stays hidden for the whole guide. Its parts are reported as
+   * validation issues.
+   */
+  leftover?: boolean;
 }
 
 export interface GeneratedGuide {
@@ -210,20 +243,37 @@ export function generateGuideFromGroups(
     dividerCount: groupCounts?.["Vertical Division"],
   });
 
-  // Build explode offsets (defaults + overrides)
+  // Build explode offsets (defaults + overrides). A structural back is
+  // lowered onto the rear of the carcass rather than slid down grooves, so
+  // it comes in from behind.
   const explodeOffsets: Record<string, [number, number, number]> = {
     ...DEFAULT_EXPLODE_OFFSETS,
+    ...(overrides?.backFixedToCarcass ? { Back: STRUCTURAL_BACK_OFFSET } : {}),
     ...overrides?.explodeOffsets,
   };
 
+  const generatedSteps: GeneratedStep[] = steps.map((s) => ({
+    groupKeys: s.groupKeys,
+    copy: s.copy,
+    drawerMode: s.drawerMode,
+    helpers: s.helpers,
+    usesFittings: s.usesFittings,
+  }));
+
+  // Every group must appear in some step — a group the rules do not know
+  // would otherwise stay hidden until the guide is complete.
+  const placed = new Set(generatedSteps.flatMap((s) => s.groupKeys));
+  const leftover = detectedGroups.filter((g) => !placed.has(g));
+  if (leftover.length > 0) {
+    generatedSteps.push({
+      groupKeys: leftover,
+      copy: "Fit the remaining parts.",
+      leftover: true,
+    });
+  }
+
   return {
-    steps: steps.map((s) => ({
-      groupKeys: s.groupKeys,
-      copy: s.copy,
-      drawerMode: s.drawerMode,
-      helpers: s.helpers,
-      usesFittings: s.usesFittings,
-    })),
+    steps: generatedSteps,
     explodeOffsets,
     detectedGroups,
   };
