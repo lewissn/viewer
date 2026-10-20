@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
+import {
+  findFrontMountedParts,
+  isFrontPartName,
+  meshWorldBounds,
+} from "@/lib/frontParts";
 
-/** Regex to detect "door" parts — extend this pattern as needed */
-const DOOR_PATTERN = /\bdoor\b/i;
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Default edge colour (dark grey — visible on white cabinets) */
 const DEFAULT_EDGE_COLOR = "#444444";
@@ -52,6 +56,9 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
   // Track hidden mesh instance IDs (using the o3dv internal mesh instance references)
   const hiddenMeshInstances = useRef<Set<any>>(new Set());
+  // Doors, drawer fronts and the handles mounted on them — the "Doors" toggle
+  // hides all of these together. Worked out once, when the model loads.
+  const frontMeshInstances = useRef<Set<any>>(new Set());
   const doorsVisibleRef = useRef(true);
   const selectedUserData = useRef<any>(null);
   const darkModeRef = useRef(false);
@@ -84,6 +91,9 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), EDGE_THRESHOLD),
       onModelLoaded: () => {
         setLoading(false);
+        frontMeshInstances.current = collectFrontMeshInstances(
+          embeddedViewer.GetViewer()
+        );
         // Show tutorial on first visit (desktop only)
         if (typeof window !== 'undefined' && window.innerWidth >= 640 && !localStorage.getItem('viewerTutorialSeen')) {
           setTutorialStep(0);
@@ -183,12 +193,9 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
     viewer.SetMeshesVisibility((userData: any) => {
       if (!userData?.originalMeshInstance) return true;
-      if (hiddenMeshInstances.current.has(userData.originalMeshInstance)) return false;
-      if (!doorsVisibleRef.current) {
-        const mi = userData.originalMeshInstance;
-        const name = mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
-        if (DOOR_PATTERN.test(name)) return false;
-      }
+      const mi = userData.originalMeshInstance;
+      if (hiddenMeshInstances.current.has(mi)) return false;
+      if (!doorsVisibleRef.current && frontMeshInstances.current.has(mi)) return false;
       return true;
     });
     viewer.Render();
@@ -244,7 +251,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     selectedUserData.current = null;
     const viewer = viewerRef.current?.GetViewer();
     if (viewer) {
-      viewer.FitSphereToWindow(viewer.GetBoundingSphere(false), true);
+      viewer.FitSphereToWindow(viewer.GetBoundingSphere(() => true), true);
     }
   }
 
@@ -292,7 +299,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   // --- Tutorial ---
   const TUTORIAL_STEPS = [
     { title: "Welcome", description: "A quick tour of the viewer controls. You can skip at any time." },
-    { title: "Toggle Doors", description: "Show or hide door components to see inside your cabinets." },
+    { title: "Toggle Doors", description: "Show or hide doors and drawer fronts to see inside your cabinets." },
     { title: "Select & Hide", description: "Click any part to select it. Hide individual parts, or show all to restore everything." },
     { title: "Edge Display", description: "Toggle wireframe edges and customise their colour for better clarity." },
     { title: "Dark Mode", description: "Switch between a light and dark background to suit your preference." },
@@ -318,7 +325,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
       <ControlButton
         onClick={toggleDoors}
         active={!doorsVisible}
-        title={doorsVisible ? "Hide Doors" : "Show Doors"}
+        title={doorsVisible ? "Hide Doors & Drawer Fronts" : "Show Doors & Drawer Fronts"}
         label="Doors"
       >
         <DoorIcon />
@@ -566,6 +573,31 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
     </div>
   );
+}
+
+/**
+ * Mesh instances the "Doors" toggle hides: every door and drawer front, plus
+ * the handles, knobs and hinge cups mounted on them.
+ */
+function collectFrontMeshInstances(viewer: any): Set<any> {
+  const parts: { instance: any; bounds: ReturnType<typeof meshWorldBounds>; isFront: boolean }[] = [];
+  try {
+    viewer.mainModel?.EnumerateMeshesAndLines?.((obj: any) => {
+      const mi = obj.isMesh ? obj.userData?.originalMeshInstance : null;
+      if (!mi) return;
+      const name = mi.node?.GetName?.() || mi.GetMesh?.()?.GetName?.() || "";
+      parts.push({ instance: mi, bounds: meshWorldBounds(obj), isFront: isFrontPartName(name) });
+    });
+  } catch {
+    // Model structure unavailable — the toggle then hides nothing
+  }
+
+  const mounted = findFrontMountedParts(parts);
+  const result = new Set<any>();
+  parts.forEach((p, i) => {
+    if (p.isFront || mounted.has(i)) result.add(p.instance);
+  });
+  return result;
 }
 
 /* ─── Shared button component ─── */
