@@ -34,7 +34,7 @@ export function readFileList(files: FileList | File[]): ImportSource {
       (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
       file.name;
     if (isIgnored(path)) continue;
-    entries.push({ path, size: file.size, data: file });
+    entries.push({ path, size: file.size, data: file, lastModified: file.lastModified });
   }
 
   const rootName = entries[0]?.path.includes("/")
@@ -52,6 +52,7 @@ export async function readZip(file: File): Promise<ImportSource> {
     unzip(buffer, (err, data) => (err ? reject(err) : resolve(data)));
   });
 
+  const modified = zipModifiedTimes(buffer);
   const entries: ImportEntry[] = [];
   for (const [path, bytes] of Object.entries(files)) {
     if (path.endsWith("/")) continue; // directory record
@@ -63,6 +64,7 @@ export async function readZip(file: File): Promise<ImportSource> {
       // Re-wrap so the type is a plain ArrayBuffer view: fflate's output may be
       // backed by a SharedArrayBuffer, which Blob does not accept.
       data: new Blob([new Uint8Array(bytes)]),
+      lastModified: modified.get(path),
     });
   }
 
@@ -116,7 +118,7 @@ async function walkEntry(
 
   if (entry.isFile) {
     const file = await fileFromEntry(entry as FileSystemFileEntry);
-    out.push({ path, size: file.size, data: file });
+    out.push({ path, size: file.size, data: file, lastModified: file.lastModified });
     return;
   }
 
@@ -155,4 +157,53 @@ function readAllDirectoryEntries(
     };
     readBatch();
   });
+}
+
+/**
+ * Modification times of a zip's entries, from its central directory.
+ *
+ * fflate doesn't expose them, but they matter: comparing the .3ds with the
+ * .pb-proj is how the import spots a model exported before the last design
+ * change. Zip stores DOS local time (2-second resolution), which is plenty.
+ */
+export function zipModifiedTimes(zip: Uint8Array): Map<string, number> {
+  const times = new Map<string, number>();
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+
+  // End of central directory record: last 22 bytes plus up to 64KB of comment
+  let eocd = -1;
+  for (let i = zip.length - 22; i >= Math.max(0, zip.length - 22 - 0xffff); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd === -1) return times;
+
+  const count = view.getUint16(eocd + 10, true);
+  let off = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder();
+
+  for (let n = 0; n < count && off + 46 <= zip.length; n++) {
+    if (view.getUint32(off, true) !== 0x02014b50) break;
+    const time = view.getUint16(off + 12, true);
+    const date = view.getUint16(off + 14, true);
+    const nameLength = view.getUint16(off + 28, true);
+    const extraLength = view.getUint16(off + 30, true);
+    const commentLength = view.getUint16(off + 32, true);
+    const name = decoder.decode(zip.subarray(off + 46, off + 46 + nameLength));
+    times.set(
+      name,
+      new Date(
+        1980 + (date >> 9),
+        ((date >> 5) & 0xf) - 1,
+        date & 0x1f,
+        time >> 11,
+        (time >> 5) & 0x3f,
+        (time & 0x1f) * 2
+      ).getTime()
+    );
+    off += 46 + nameLength + extraLength + commentLength;
+  }
+  return times;
 }

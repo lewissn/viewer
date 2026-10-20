@@ -16,10 +16,15 @@
  *     Sarah Culloty - 11569.txt    <- project hardware list
  *     Measured Plans.pdf
  *
- * A cabinet is a CSV plus a model sharing its stem. Everything without that
- * pairing (the project-wide model, .pb-proj, PDFs) is skipped and reported so
- * it is clear what was ignored and why.
+ * A cabinet is a CSV plus a model sharing its stem. Most orders have no such
+ * pairs, only the whole-project .3ds; that is returned as a project model to
+ * be split into cabinets (see projectSplitImport.ts), together with the
+ * .pb-proj (to tell whether the model is out of date) and the hardware list
+ * (for fittings). Everything else (PDFs and the like) is skipped and reported
+ * so it is clear what was ignored and why.
  */
+
+import type { ResolvedFitting } from "./fittings";
 
 /** Supabase Storage bucket holding imported models and textures. */
 export const PROJECT_FILES_BUCKET = "project-files";
@@ -35,6 +40,8 @@ export interface ImportEntry {
   size: number;
   /** Payload — a browser File, or bytes extracted from a zip */
   data: Blob;
+  /** Last-modified time in ms since the epoch, when the source records one */
+  lastModified?: number;
 }
 
 export interface DetectedCabinet {
@@ -43,8 +50,29 @@ export interface DetectedCabinet {
   /** Occurrence index when the same code appears in more than one folder */
   index: number;
   model: ImportEntry;
-  csv: ImportEntry;
+  /** Parts + fittings CSV; absent for a cabinet split from a project model */
+  csv?: ImportEntry;
+  /** Parts and fittings already worked out, used when there is no CSV */
+  prepared?: {
+    parts: string[];
+    fittings: ResolvedFitting[];
+    warnings: string[];
+  };
   textures: ImportEntry[];
+}
+
+/**
+ * A whole-project model with no CSV beside it, and the files that help split
+ * it into cabinets.
+ */
+export interface ProjectModelSource {
+  model: ImportEntry;
+  /** Textures from the folder sharing the model's stem, else any nearby */
+  textures: ImportEntry[];
+  /** The PolyBoard project the model was exported from */
+  projectFile?: ImportEntry;
+  /** PolyBoard hardware lists that may hold per-cabinet fittings */
+  hardwareLists: ImportEntry[];
 }
 
 export interface SkippedFile {
@@ -57,6 +85,8 @@ export interface DetectionResult {
   projectName: string;
   customerName: string;
   cabinets: DetectedCabinet[];
+  /** Whole-project models that can be split into cabinets */
+  projectModels: ProjectModelSource[];
   skipped: SkippedFile[];
   warnings: string[];
 }
@@ -170,6 +200,8 @@ export function detectProject(
   const modelsByKey = new Map<string, ImportEntry>();
   const csvs: ImportEntry[] = [];
   const textures: ImportEntry[] = [];
+  const projectFiles: ImportEntry[] = [];
+  const textFiles: ImportEntry[] = [];
   const others: ImportEntry[] = [];
 
   for (const entry of entries) {
@@ -190,6 +222,10 @@ export function detectProject(
       csvs.push(entry);
     } else if (TEXTURE_EXTS.includes(ext)) {
       textures.push(entry);
+    } else if (ext === "pb-proj") {
+      projectFiles.push(entry);
+    } else if (ext === "txt") {
+      textFiles.push(entry);
     } else {
       others.push(entry);
     }
@@ -264,25 +300,43 @@ export function detectProject(
     cabinets.push({ code: stem, index, model, csv, textures: cabinetTextures });
   }
 
-  // Report the leftovers so nothing disappears without explanation.
-  for (const model of modelsByKey.values()) {
-    if (usedModels.has(model)) continue;
-    skipped.push({
-      path: model.path,
-      reason: `No CSV named "${stemOf(model.path)}" next to it — treated as a whole-project model.`,
-    });
+  // A .3ds with no CSV is a whole-project model to split. Other formats can't
+  // be split, so they are only reported.
+  const projectModels: ProjectModelSource[] = [];
+  const usedSupport = new Set<ImportEntry>();
+  const unpaired = [...modelsByKey.values()]
+    .filter((m) => !usedModels.has(m))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  for (const model of unpaired) {
+    if (extOf(model.path) !== "3ds") {
+      skipped.push({
+        path: model.path,
+        reason: `No CSV named "${stemOf(model.path)}" next to it, and only .3ds project models can be split.`,
+      });
+      continue;
+    }
+    const source = projectModelSource(model, textures, projectFiles, textFiles);
+    for (const e of [...source.textures, ...source.hardwareLists]) usedSupport.add(e);
+    if (source.projectFile) usedSupport.add(source.projectFile);
+    projectModels.push(source);
   }
+
+  // Report the leftovers so nothing disappears without explanation.
   for (const tex of textures) {
-    if (usedTextures.has(tex)) continue;
+    if (usedTextures.has(tex) || usedSupport.has(tex)) continue;
     skipped.push({
       path: tex.path,
       reason: "Not in any cabinet's texture folder.",
     });
   }
+  for (const entry of [...projectFiles, ...textFiles]) {
+    if (usedSupport.has(entry)) continue;
+    skipped.push({ path: entry.path, reason: "Not next to a project model." });
+  }
 
-  if (cabinets.length === 0) {
+  if (cabinets.length === 0 && projectModels.length === 0) {
     warnings.push(
-      "No cabinets found. Each cabinet needs a model file and a CSV with the same name, side by side."
+      "No cabinets found. The folder needs the project's .3ds export, or a model file and a CSV with the same name for each cabinet."
     );
   }
   if (!projectId) {
@@ -294,9 +348,47 @@ export function detectProject(
     projectName: folderName || projectId,
     customerName,
     cabinets,
+    projectModels,
     skipped,
     warnings,
   };
+}
+
+/**
+ * Gather what goes with a project model "<dir>/<stem>.3ds":
+ * - textures from "<dir>/<stem>/", else loose in <dir>, else anywhere;
+ * - "<dir>/<stem>.pb-proj", else the only .pb-proj in <dir>;
+ * - hardware lists named "<stem>*.txt" in <dir> or kept in the texture
+ *   folder, else every .txt in <dir> (the list's name sometimes carries a
+ *   different order number than the model's).
+ */
+function projectModelSource(
+  model: ImportEntry,
+  textures: ImportEntry[],
+  projectFiles: ImportEntry[],
+  textFiles: ImportEntry[]
+): ProjectModelSource {
+  const dir = dirOf(model.path);
+  const stem = stemOf(model.path).toLowerCase();
+  const stemFolder = `${dir ? `${dir}/` : ""}${stemOf(model.path)}/`.toLowerCase();
+  const inStemFolder = (e: ImportEntry) => e.path.toLowerCase().startsWith(stemFolder);
+  const inDir = (e: ImportEntry) => dirOf(e.path) === dir;
+
+  let modelTextures = textures.filter(inStemFolder);
+  if (modelTextures.length === 0) modelTextures = textures.filter(inDir);
+  if (modelTextures.length === 0) modelTextures = textures;
+
+  const projectsHere = projectFiles.filter(inDir);
+  const projectFile =
+    projectsHere.find((p) => stemOf(p.path).toLowerCase() === stem) ??
+    (projectsHere.length === 1 ? projectsHere[0] : undefined);
+
+  let hardwareLists = textFiles.filter(
+    (t) => inStemFolder(t) || (inDir(t) && stemOf(t.path).toLowerCase().startsWith(stem))
+  );
+  if (hardwareLists.length === 0) hardwareLists = textFiles.filter(inDir);
+
+  return { model, textures: modelTextures, projectFile, hardwareLists };
 }
 
 /**
