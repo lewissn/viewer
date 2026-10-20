@@ -22,6 +22,8 @@
  *                 the counter top before the top, alone or inside another
  *                 step) and check the validator flags it and the repair puts
  *                 it right
+ *   --parts       also list each step's panels (label, quantity, size) as
+ *                 the customer wizard shows them
  *
  * Files are only read, never written.
  */
@@ -186,6 +188,7 @@ function fakeViewer(objects: RawObject[]) {
 const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
 const mutate = args.includes("--mutate");
+const showParts = args.includes("--parts");
 const libIdx = args.indexOf("--lib");
 const libDir = libIdx >= 0 ? resolve(args[libIdx + 1]) : resolve(__dirname, "../lib");
 const files = args.filter(
@@ -324,6 +327,11 @@ async function main() {
           .map((k) => `${k}×${c.partGroups.get(k)?.length ?? 0}`)
           .join(", ");
         log(`  ${String(i + 1).padStart(2)}. [${groups}]${s.drawerMode ? ` (${s.drawerMode})` : ""}  ${s.copy}`);
+        if (showParts) {
+          for (const p of state.stepParts?.[i] ?? []) {
+            log(`        - ${p.label}${p.quantity > 1 ? ` ×${p.quantity}` : ""}  ${p.width} × ${p.height} × ${p.thickness}`);
+          }
+        }
       });
       if (hidden.length) {
         log(`  HIDDEN THROUGH WHOLE GUIDE: ${hidden.map((p) => `${p.name} (${p.groupKey})`).join("; ")}`);

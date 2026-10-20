@@ -6,6 +6,7 @@ import type { Project, CabinetInstance } from "@/lib/projects";
 import {
   AssemblyGuideController,
   type ControllerState,
+  type StepPart,
 } from "@/lib/assemblyGuideController";
 import type { StepHelper } from "@/lib/assemblyGuides";
 import { buildProjectNavigation } from "@/lib/navigation";
@@ -41,6 +42,19 @@ export default function ProjectClient({ project }: Props) {
   });
   // Pending resume offer — set after a cabinet loads if we find a saved step.
   const [resumeStep, setResumeStep] = useState<number | null>(null);
+
+  // Step parts list: open by default on wide screens only, so the wizard card
+  // stays small on phones. The choice carries over between steps.
+  const [partsOpen, setPartsOpen] = useState(false);
+  useEffect(() => {
+    setPartsOpen(window.matchMedia("(min-width: 640px)").matches);
+  }, []);
+  // Parts-list line highlighted on the model, for the step it was picked on
+  // (a new step brings its own highlight)
+  const [selectedPart, setSelectedPart] = useState<{
+    step: number;
+    id: string;
+  } | null>(null);
 
   // Tapped-part info chip (read-only; does not change step highlights).
   const [tappedPart, setTappedPart] = useState<{
@@ -278,12 +292,15 @@ export default function ProjectClient({ project }: Props) {
   // ── Wizard actions ──
 
   function handleNext() {
+    setSelectedPart(null);
     controllerRef.current?.next();
   }
   function handleBack() {
+    setSelectedPart(null);
     controllerRef.current?.back();
   }
   function handleRestart() {
+    setSelectedPart(null);
     controllerRef.current?.restart();
   }
   function handleClose() {
@@ -293,6 +310,12 @@ export default function ProjectClient({ project }: Props) {
   function handleReopen() {
     controllerRef.current?.restart();
     setWizardOpen(true);
+  }
+
+  function handleSelectPart(partId: string) {
+    const next = selectedPartId === partId ? null : partId;
+    controllerRef.current?.highlightStepPart(state.currentStep, next);
+    setSelectedPart(next ? { step: state.currentStep, id: next } : null);
   }
 
   function handleResume() {
@@ -323,6 +346,10 @@ export default function ProjectClient({ project }: Props) {
     stepIndex >= 0 && stepIndex < state.totalSteps
       ? state.activeSteps[stepIndex]
       : null;
+  const currentStepParts =
+    currentStepData != null ? (state.stepParts?.[stepIndex] ?? []) : [];
+  const selectedPartId =
+    selectedPart?.step === stepIndex ? selectedPart.id : null;
 
   const cabinetTitle = activeCabinet?.cabinetName ?? project.projectName;
   const hasCabinet = !!activeCabinet?.modelFileUrl;
@@ -812,6 +839,18 @@ export default function ProjectClient({ project }: Props) {
                       </p>
                     )}
 
+                    {/* Panels to pick up for this step */}
+                    {currentStepParts.length > 0 && (
+                      <StepPartsList
+                        parts={currentStepParts}
+                        open={partsOpen}
+                        onToggle={() => setPartsOpen((o) => !o)}
+                        selectedId={selectedPartId}
+                        onSelect={handleSelectPart}
+                        disabled={state.isAnimating}
+                      />
+                    )}
+
                     {/* Drawer sub-steps (visual only) */}
                     {currentStepData.drawerMode === "assembleFirst" && (
                       <DrawerSubSteps />
@@ -964,6 +1003,95 @@ function DrawerSubSteps() {
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function StepPartsList({
+  parts,
+  open,
+  onToggle,
+  selectedId,
+  onSelect,
+  disabled,
+}: {
+  parts: StepPart[];
+  open: boolean;
+  onToggle: () => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  disabled: boolean;
+}) {
+  const total = parts.reduce((n, p) => n + p.quantity, 0);
+  return (
+    <div className="mb-2 border-t border-[var(--sidebar-border)]/30">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="step-parts-list"
+        className="flex items-center gap-1.5 w-full py-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+      >
+        <svg
+          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+        <span className="font-medium">
+          {total === 1 ? "1 panel" : `${total} panels`} for this step
+        </span>
+        {open && (
+          <span className="ml-auto text-[10px] tabular-nums opacity-70">
+            W × H × T mm
+          </span>
+        )}
+      </button>
+      {open && (
+        <ul
+          id="step-parts-list"
+          className="max-h-36 overflow-y-auto -mx-1.5 pb-1"
+        >
+          {parts.map((p) => {
+            const selected = p.id === selectedId;
+            return (
+              <li key={p.id}>
+                <button
+                  onClick={() => onSelect(p.id)}
+                  disabled={disabled}
+                  aria-pressed={selected}
+                  title="Show on the model"
+                  className={`flex items-center gap-2 w-full min-h-[32px] px-1.5 rounded-lg text-left transition-colors disabled:opacity-50 ${
+                    selected
+                      ? "bg-[var(--accent)]/10"
+                      : "hover:bg-[var(--muted)]/10"
+                  }`}
+                >
+                  <span
+                    className={`flex-1 min-w-0 truncate text-[12px] font-medium ${
+                      selected ? "text-[var(--accent)]" : "text-[var(--foreground)]"
+                    }`}
+                  >
+                    {p.label}
+                  </span>
+                  {p.quantity > 1 && (
+                    <span className="flex-shrink-0 text-[11px] font-medium tabular-nums text-[var(--muted)]">
+                      ×{p.quantity}
+                    </span>
+                  )}
+                  {p.width > 0 && (
+                    <span className="flex-shrink-0 text-[11px] tabular-nums text-[var(--muted)]">
+                      {p.width} × {p.height} × {p.thickness}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
