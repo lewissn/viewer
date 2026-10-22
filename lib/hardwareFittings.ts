@@ -23,9 +23,11 @@
  */
 
 import type { ThreeDsObject } from "./threeDs";
+import type { ProjectFitting } from "./polyboardProject";
 import { baseName, type SplitGroup } from "./splitProject";
 import {
   getCanonicalPart,
+  isKnownFitting,
   resolveErpFitting,
   resolveFittingsWithReport,
   sortFittings,
@@ -126,6 +128,26 @@ export interface HardwareCount {
   /** Hardware meshes not matching any known fitting */
   unrecognised: number;
   notes: string[];
+  /** The hinge type came from the PolyBoard project rather than from where the doors sit */
+  hingeFromProject?: boolean;
+  /** About the hinges the project names; moot when the hardware list is used */
+  hingeNotes: string[];
+}
+
+/**
+ * Hinges among the fittings a PolyBoard project names for a cabinet. The
+ * method keeps hinges in "...\Hinges" and their spacing rules in
+ * "...\HINGES" (on every project tried), and not every hinge says HINGE
+ * ("GTV/ZM-08/HALF OVERLAY"), so the folder decides.
+ */
+function projectHinges(fittings: ProjectFitting[]): { known: string[]; unknown: string[] } {
+  const hinges = [...new Set(fittings.filter((f) => /\\Hinges$/.test(f.folder)).map((f) => f.name))];
+  const isHinge = (n: string) => resolveErpFitting(n, 1).some((f) => /HINGE/.test(f.partId));
+  return {
+    known: hinges.filter(isHinge),
+    // Halves of a hinge listed elsewhere ("(FF SIDE)") resolve to nothing on purpose
+    unknown: hinges.filter((n) => !isKnownFitting(n)),
+  };
 }
 
 /**
@@ -159,8 +181,14 @@ function handleFinish(meshes: ThreeDsObject[], simpleNames: string[], family: st
  *
  * @param simpleNames handle/knob names from the project hardware list, used to
  *                    pick the finish when the mesh alone can't say
+ * @param projectFittings what the PolyBoard project says this cabinet's parts
+ *                    use (see polyboardProject.ts), to name the hinges
  */
-export function countHardwareFittings(group: SplitGroup, simpleNames: string[] = []): HardwareCount {
+export function countHardwareFittings(
+  group: SplitGroup,
+  simpleNames: string[] = [],
+  projectFittings: ProjectFitting[] = []
+): HardwareCount {
   const byKind = new Map<MeshKind, ThreeDsObject[]>();
   let unrecognised = 0;
   for (const h of group.hardware) {
@@ -180,7 +208,18 @@ export function countHardwareFittings(group: SplitGroup, simpleNames: string[] =
   if (n("cornerScrew")) rows.push({ name: "BACK CORNER PANEL SCREWS (RIGHT ANGLE)", qty: n("cornerScrew") });
   if (n("panelPin")) rows.push({ name: "3MM MARKING HOLE", qty: n("panelPin") });
   if (n("shelfPin")) rows.push({ name: "SHELF PINS 5MM", qty: n("shelfPin") });
-  if (n("hinge")) rows.push({ name: hingeAlias(group), qty: n("hinge") });
+  // The project names the hinge; quantities still come from the meshes
+  const hinges = projectHinges(projectFittings);
+  const hingeFromProject = n("hinge") > 0 && hinges.known.length === 1 && hinges.unknown.length === 0;
+  if (hingeFromProject) rows.push({ name: hinges.known[0], qty: n("hinge") });
+  else if (n("hinge")) rows.push({ name: hingeAlias(group), qty: n("hinge") });
+  const listedHinges = [...hinges.known, ...hinges.unknown];
+  const hingeNotes: string[] = [];
+  if (n("hinge") && !hingeFromProject && listedHinges.length > 1) {
+    hingeNotes.push(`PolyBoard fits these doors with ${listedHinges.join(", ")} — the model can't tell which hinge goes where.`);
+  } else if (!n("hinge") && listedHinges.length) {
+    hingeNotes.push(`PolyBoard fits these doors with ${listedHinges.join(", ")}, but no hinges are drawn in the model, so none are counted.`);
+  }
   if (n("antiTip")) rows.push({ name: "ANTI-TIP BRACKET (+ PLATE) (290.36.540 + 290.36.560)", qty: n("antiTip") });
   if (n("lBracket")) rows.push({ name: "L BRACKET", qty: n("lBracket") });
   // The hardware list counts each leg twice (the alias halves it again)
@@ -199,7 +238,7 @@ export function countHardwareFittings(group: SplitGroup, simpleNames: string[] =
 
   const { fittings, unresolved } = resolveFittingsWithReport(rows);
   for (const u of unresolved) notes.push(`${u.qty} × "${u.name}" not in the fittings catalogue.`);
-  return { fittings, unrecognised, notes };
+  return { fittings, unrecognised, notes, hingeFromProject, hingeNotes };
 }
 
 // ── Project hardware list ──
@@ -275,15 +314,44 @@ export interface FittingsSource {
   notes: string[];
 }
 
+/** What a PolyBoard project adds when the split cabinets carry their PolyBoard names */
+export interface ProjectCabinets {
+  /** Every cabinet name in hardware-list order (see hardwareListOrder) */
+  listOrder: string[];
+  /** Fittings the project gives each cabinet's parts, by cabinet name */
+  fittings: Map<string, ProjectFitting[]>;
+}
+
 /**
  * Pick each cabinet's fittings: its own block of the hardware list when one
  * agrees with the cabinet's meshes, otherwise the mesh count.
+ *
+ * With cabinet names (split by a 3D DXF) and a list holding one block per
+ * cabinet, a cabinet's block is the one at its name's place in the list —
+ * PolyBoard writes them sorted by name. It is still checked against the
+ * meshes; without names, or when that check fails, a block is found by
+ * matching counts.
  */
-export function assignFittings(groups: SplitGroup[], blocks: HardwareBlock[]): FittingsSource[] {
+export function assignFittings(
+  groups: SplitGroup[],
+  blocks: HardwareBlock[],
+  project?: ProjectCabinets
+): FittingsSource[] {
   const simpleNames = simpleFittingNames(blocks);
-  const counts = groups.map((g) => countHardwareFittings(g, simpleNames));
+  const counts = groups.map((g) =>
+    countHardwareFittings(g, simpleNames, (g.name && project?.fittings.get(g.name)) || [])
+  );
   const blockVectors = blocks.map(blockCheckVector);
-  const used = new Set<number>();
+  const meshVectors = counts.map((c) => checkVector(c.fittings));
+  const sameAs = (i: number, b: number) => blockVectors[b].every((v, k) => v === meshVectors[i][k]);
+
+  // Blocks found by name, claimed before any are matched by counts
+  const byName = groups.map((g, i) => {
+    if (!g.name || !project || project.listOrder.length !== blocks.length) return -1;
+    const b = project.listOrder.indexOf(g.name);
+    return b !== -1 && sameAs(i, b) ? b : -1;
+  });
+  const used = new Set(byName.filter((b) => b !== -1));
   // Identical copies of one cabinet may share a single block
   const bySegment = new Map<number, number>();
 
@@ -296,12 +364,15 @@ export function assignFittings(groups: SplitGroup[], blocks: HardwareBlock[]): F
       );
     }
 
-    const mesh = checkVector(count.fittings);
+    const mesh = meshVectors[i];
     const hasHardware = mesh.some((v) => v > 0);
-    const same = (b: number) => blockVectors[b].every((v, k) => v === mesh[k]);
+    const same = (b: number) => sameAs(i, b);
 
-    let block = -1;
-    if (hasHardware) {
+    let block = byName[i];
+    if (block === -1 && g.name && project && project.listOrder.length === blocks.length) {
+      notes.push(`${g.name}'s block in the hardware list doesn't match its model, so its fittings were matched by count.`);
+    }
+    if (block === -1 && hasHardware) {
       block = blocks.findIndex((_, b) => !used.has(b) && same(b));
       const shared = bySegment.get(g.segment);
       if (block === -1 && g.copies > 1 && shared !== undefined && same(shared)) block = shared;
@@ -317,7 +388,8 @@ export function assignFittings(groups: SplitGroup[], blocks: HardwareBlock[]): F
       return { fittings, source: "hardware-list", notes };
     }
 
-    if (count.fittings.some((f) => f.category === "HINGES")) {
+    notes.push(...count.hingeNotes);
+    if (count.fittings.some((f) => f.category === "HINGES") && !count.hingeFromProject) {
       notes.unshift("Hinge type is worked out from where the doors sit — check corner and half-overlay doors.");
     }
     return { fittings: sortFittings(count.fittings), source: "model", notes };

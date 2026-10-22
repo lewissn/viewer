@@ -34,7 +34,9 @@ import {
   parseHardwareList,
   type FittingsSource,
   type HardwareBlock,
+  type ProjectCabinets,
 } from "./hardwareFittings";
+import { hardwareListOrder, readPolyboardProject, type ProjectFitting } from "./polyboardProject";
 import { classifyPart } from "./classifyPart";
 import type { DetectedCabinet, ImportEntry, ProjectModelSource } from "./importFolder";
 import type { FittingLocation } from "./projects";
@@ -132,6 +134,42 @@ export function staleMessage(s: StaleModel): string {
   );
 }
 
+/**
+ * What the PolyBoard project says about the split cabinets, when they carry
+ * their PolyBoard names (split by a 3D DXF). Without the project file the
+ * DXF's names still give the hardware list's order.
+ */
+async function projectCabinets(
+  groups: SplitGroup[],
+  projectFile: ImportEntry | undefined,
+  warnings: string[]
+): Promise<ProjectCabinets | undefined> {
+  const named = [...new Set(groups.flatMap((g) => (g.name ? [g.name] : [])))];
+  if (!named.length) return undefined;
+  const fittings = new Map<string, ProjectFitting[]>();
+  let names = named;
+  if (projectFile) {
+    try {
+      const project = readPolyboardProject(new Uint8Array(await projectFile.data.arrayBuffer()));
+      for (const w of project.warnings) warnings.push(`${fileName(projectFile.path)}: ${w}`);
+      const inProject = project.cabinets.map((c) => c.name);
+      const missing = named.filter((n) => !inProject.includes(n));
+      if (missing.length) {
+        warnings.push(
+          `${fileName(projectFile.path)} has no cabinet named ${missing.join(", ")} — it looks like ` +
+            `another revision of the design, so it wasn't used.`
+        );
+      } else {
+        names = inProject;
+        for (const c of project.cabinets) fittings.set(c.name, c.fittings);
+      }
+    } catch (err) {
+      warnings.push(`${fileName(projectFile.path)}: ${err instanceof Error ? err.message : "could not be read."}`);
+    }
+  }
+  return { listOrder: hardwareListOrder(names), fittings };
+}
+
 /** PolyBoard writes DXF in the Windows ANSI code page, not UTF-8. */
 async function readDxfText(entry: ImportEntry): Promise<string> {
   return new TextDecoder("windows-1252").decode(await entry.data.arrayBuffer());
@@ -191,7 +229,11 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
     for (const list of source.hardwareLists) {
       blocks.push(...parseHardwareList(await list.data.text()));
     }
-    const fittings = assignFittings(split.groups, blocks);
+    const fittings = assignFittings(
+      split.groups,
+      blocks,
+      await projectCabinets(split.groups, source.projectFile, warnings)
+    );
     const byMaterial = materialTextures(file);
 
     split.groups.forEach((group, g) => {
