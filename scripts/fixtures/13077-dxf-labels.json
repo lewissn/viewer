@@ -1,0 +1,2198 @@
+{
+ "order": "13077",
+ "source": "PolyBoard project .3ds + 3D DXF export",
+ "objects": [
+  {
+   "object": 0,
+   "name3ds": "Bottom 1",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "panel"
+  },
+  {
+   "object": 1,
+   "name3ds": "Top 2",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "panel"
+  },
+  {
+   "object": 2,
+   "name3ds": "Right Side 3",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "panel"
+  },
+  {
+   "object": 3,
+   "name3ds": "Back 4",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "panel"
+  },
+  {
+   "object": 4,
+   "name3ds": "Back 5",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "panel"
+  },
+  {
+   "object": 5,
+   "name3ds": "Left Side 6",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "panel"
+  },
+  {
+   "object": 6,
+   "name3ds": "Door 1 (Double) [1] 7",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Door 1 (Double) [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 7,
+   "name3ds": "Door 1 (Double) [1] 8",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Door 1 (Double) [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 8,
+   "name3ds": "Left Face Frame [1] 9",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 9,
+   "name3ds": "Right Face Frame [1] 10",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 10,
+   "name3ds": "Top Face Frame [1] 11",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 11,
+   "name3ds": "Plinth 1 [1] 12",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 12,
+   "name3ds": "Vertical Division [1] 13",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 13,
+   "name3ds": "Mobile Shelf [1] 14",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Mobile Shelf [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 14,
+   "name3ds": "Mobile Shelf [2] 15",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Mobile Shelf [2]",
+   "kind": "panel"
+  },
+  {
+   "object": 15,
+   "name3ds": "Bottom 16",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "panel"
+  },
+  {
+   "object": 16,
+   "name3ds": "Top 17",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "panel"
+  },
+  {
+   "object": 17,
+   "name3ds": "Right Side 18",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "panel"
+  },
+  {
+   "object": 18,
+   "name3ds": "Back 19",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "panel"
+  },
+  {
+   "object": 19,
+   "name3ds": "Back 20",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "panel"
+  },
+  {
+   "object": 20,
+   "name3ds": "Left Side 21",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "panel"
+  },
+  {
+   "object": 21,
+   "name3ds": "Door 1 (Double) [1] 22",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Door 1 (Double) [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 22,
+   "name3ds": "Door 1 (Double) [1] 23",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Door 1 (Double) [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 23,
+   "name3ds": "Left Face Frame [1] 24",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 24,
+   "name3ds": "Right Face Frame [1] 25",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 25,
+   "name3ds": "Top Face Frame [1] 26",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top Face Frame [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 26,
+   "name3ds": "Plinth 1 [1] 27",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 27,
+   "name3ds": "Vertical Division [1] 28",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 28,
+   "name3ds": "Mobile Shelf [1] 29",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Mobile Shelf [1]",
+   "kind": "panel"
+  },
+  {
+   "object": 29,
+   "name3ds": "Mobile Shelf [2] 30",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Mobile Shelf [2]",
+   "kind": "panel"
+  },
+  {
+   "object": 30,
+   "name3ds": "Mobile Shelf [2] 31",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 31,
+   "name3ds": "Mobile Shelf [2] 32",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 32,
+   "name3ds": "Mobile Shelf [2] 33",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 33,
+   "name3ds": "Mobile Shelf [2] 34",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 34,
+   "name3ds": "Mobile Shelf [2] 35",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 35,
+   "name3ds": "Mobile Shelf [2] 36",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 36,
+   "name3ds": "Mobile Shelf [2] 37",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 37,
+   "name3ds": "Mobile Shelf [2] 38",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 38,
+   "name3ds": "Mobile Shelf [2] 39",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 39,
+   "name3ds": "Mobile Shelf [2] 40",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 40,
+   "name3ds": "Mobile Shelf [2] 41",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 41,
+   "name3ds": "Mobile Shelf [2] 42",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 42,
+   "name3ds": "Mobile Shelf [2] 43",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 43,
+   "name3ds": "Mobile Shelf [2] 44",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 44,
+   "name3ds": "Mobile Shelf [2] 45",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 45,
+   "name3ds": "Mobile Shelf [2] 46",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 46,
+   "name3ds": "Mobile Shelf [2] 47",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 47,
+   "name3ds": "Mobile Shelf [2] 48",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 48,
+   "name3ds": "Mobile Shelf [2] 49",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 49,
+   "name3ds": "Mobile Shelf [2] 50",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 50,
+   "name3ds": "Mobile Shelf [2] 51",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 51,
+   "name3ds": "Mobile Shelf [2] 52",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 52,
+   "name3ds": "Mobile Shelf [2] 53",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 53,
+   "name3ds": "Mobile Shelf [2] 54",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 54,
+   "name3ds": "Mobile Shelf [2] 55",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 55,
+   "name3ds": "Mobile Shelf [2] 56",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 56,
+   "name3ds": "Mobile Shelf [2] 57",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 57,
+   "name3ds": "Mobile Shelf [2] 58",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 58,
+   "name3ds": "Mobile Shelf [2] 59",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 59,
+   "name3ds": "Mobile Shelf [2] 60",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 60,
+   "name3ds": "Mobile Shelf [2] 61",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 61,
+   "name3ds": "Mobile Shelf [2] 62",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 62,
+   "name3ds": "Mobile Shelf [2] 63",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 63,
+   "name3ds": "Mobile Shelf [2] 64",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 64,
+   "name3ds": "Mobile Shelf [2] 65",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 65,
+   "name3ds": "Mobile Shelf [2] 66",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 66,
+   "name3ds": "Mobile Shelf [2] 67",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 67,
+   "name3ds": "Mobile Shelf [2] 68",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 68,
+   "name3ds": "Mobile Shelf [2] 69",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 69,
+   "name3ds": "Mobile Shelf [2] 70",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 70,
+   "name3ds": "Mobile Shelf [2] 71",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 71,
+   "name3ds": "Mobile Shelf [2] 72",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 72,
+   "name3ds": "Mobile Shelf [2] 73",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 73,
+   "name3ds": "Mobile Shelf [2] 74",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 74,
+   "name3ds": "Mobile Shelf [2] 75",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 75,
+   "name3ds": "Mobile Shelf [2] 76",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 76,
+   "name3ds": "Mobile Shelf [2] 77",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 77,
+   "name3ds": "Mobile Shelf [2] 78",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 78,
+   "name3ds": "Mobile Shelf [2] 79",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 79,
+   "name3ds": "Mobile Shelf [2] 80",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 80,
+   "name3ds": "Mobile Shelf [2] 81",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 81,
+   "name3ds": "Mobile Shelf [2] 82",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 82,
+   "name3ds": "Mobile Shelf [2] 83",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 83,
+   "name3ds": "Mobile Shelf [2] 84",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 84,
+   "name3ds": "Mobile Shelf [2] 85",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 85,
+   "name3ds": "Mobile Shelf [2] 86",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 86,
+   "name3ds": "Mobile Shelf [2] 87",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 87,
+   "name3ds": "Mobile Shelf [2] 88",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 88,
+   "name3ds": "Mobile Shelf [2] 89",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 89,
+   "name3ds": "Mobile Shelf [2] 90",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 90,
+   "name3ds": "Mobile Shelf [2] 91",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 91,
+   "name3ds": "Mobile Shelf [2] 92",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 92,
+   "name3ds": "Mobile Shelf [2] 93",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 93,
+   "name3ds": "Mobile Shelf [2] 94",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 94,
+   "name3ds": "Mobile Shelf [2] 95",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 95,
+   "name3ds": "Mobile Shelf [2] 96",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 96,
+   "name3ds": "Mobile Shelf [2] 97",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 97,
+   "name3ds": "Mobile Shelf [2] 98",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 98,
+   "name3ds": "Mobile Shelf [2] 99",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 99,
+   "name3ds": "Mobile Shelf [2] 100",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 100,
+   "name3ds": "Mobile Shelf [2] 101",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 101,
+   "name3ds": "Mobile Shelf [2] 102",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 102,
+   "name3ds": "Mobile Shelf [2] 103",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 103,
+   "name3ds": "Mobile Shelf [2] 104",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 104,
+   "name3ds": "Mobile Shelf [2] 105",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 105,
+   "name3ds": "Mobile Shelf [2] 106",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 106,
+   "name3ds": "Mobile Shelf [2] 107",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 107,
+   "name3ds": "Mobile Shelf [2] 108",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 108,
+   "name3ds": "Mobile Shelf [2] 109",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 109,
+   "name3ds": "Mobile Shelf [2] 110",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 110,
+   "name3ds": "Mobile Shelf [2] 111",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 111,
+   "name3ds": "Mobile Shelf [2] 112",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 112,
+   "name3ds": "Mobile Shelf [2] 113",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 113,
+   "name3ds": "Mobile Shelf [2] 114",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 114,
+   "name3ds": "Mobile Shelf [2] 115",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 115,
+   "name3ds": "Mobile Shelf [2] 116",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 116,
+   "name3ds": "Mobile Shelf [2] 117",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 117,
+   "name3ds": "Mobile Shelf [2] 118",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 118,
+   "name3ds": "Mobile Shelf [2] 119",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 119,
+   "name3ds": "Mobile Shelf [2] 120",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 120,
+   "name3ds": "Mobile Shelf [2] 121",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 121,
+   "name3ds": "Mobile Shelf [2] 122",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 122,
+   "name3ds": "Mobile Shelf [2] 123",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 123,
+   "name3ds": "Mobile Shelf [2] 124",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 124,
+   "name3ds": "Mobile Shelf [2] 125",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 125,
+   "name3ds": "Mobile Shelf [2] 126",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 126,
+   "name3ds": "Mobile Shelf [2] 127",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 127,
+   "name3ds": "Mobile Shelf [2] 128",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 128,
+   "name3ds": "Mobile Shelf [2] 129",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 129,
+   "name3ds": "Mobile Shelf [2] 130",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 130,
+   "name3ds": "Mobile Shelf [2] 131",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 131,
+   "name3ds": "Mobile Shelf [2] 132",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 132,
+   "name3ds": "Mobile Shelf [2] 133",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 133,
+   "name3ds": "Mobile Shelf [2] 134",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 134,
+   "name3ds": "Mobile Shelf [2] 135",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 135,
+   "name3ds": "Mobile Shelf [2] 136",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 136,
+   "name3ds": "Mobile Shelf [2] 137",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 137,
+   "name3ds": "Mobile Shelf [2] 138",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 138,
+   "name3ds": "Mobile Shelf [2] 139",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 139,
+   "name3ds": "Mobile Shelf [2] 140",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 140,
+   "name3ds": "Mobile Shelf [2] 141",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 141,
+   "name3ds": "Mobile Shelf [2] 142",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 142,
+   "name3ds": "Mobile Shelf [2] 143",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 143,
+   "name3ds": "Mobile Shelf [2] 144",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 144,
+   "name3ds": "Mobile Shelf [2] 145",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 145,
+   "name3ds": "Mobile Shelf [2] 146",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 146,
+   "name3ds": "Mobile Shelf [2] 147",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 147,
+   "name3ds": "Mobile Shelf [2] 148",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 148,
+   "name3ds": "Mobile Shelf [2] 149",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 149,
+   "name3ds": "Mobile Shelf [2] 150",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 150,
+   "name3ds": "Mobile Shelf [2] 151",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 151,
+   "name3ds": "Mobile Shelf [2] 152",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 152,
+   "name3ds": "Mobile Shelf [2] 153",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 153,
+   "name3ds": "Mobile Shelf [2] 154",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 154,
+   "name3ds": "Mobile Shelf [2] 155",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 155,
+   "name3ds": "Mobile Shelf [2] 156",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 156,
+   "name3ds": "Mobile Shelf [2] 157",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 157,
+   "name3ds": "Mobile Shelf [2] 158",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 158,
+   "name3ds": "Mobile Shelf [2] 159",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 159,
+   "name3ds": "Mobile Shelf [2] 160",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 160,
+   "name3ds": "Mobile Shelf [2] 161",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 161,
+   "name3ds": "Mobile Shelf [2] 162",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 162,
+   "name3ds": "Mobile Shelf [2] 163",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 163,
+   "name3ds": "Mobile Shelf [2] 164",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 164,
+   "name3ds": "Mobile Shelf [2] 165",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 165,
+   "name3ds": "Mobile Shelf [2] 166",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 166,
+   "name3ds": "Mobile Shelf [2] 167",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 167,
+   "name3ds": "Mobile Shelf [2] 168",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 168,
+   "name3ds": "Mobile Shelf [2] 169",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 169,
+   "name3ds": "Mobile Shelf [2] 170",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 170,
+   "name3ds": "Mobile Shelf [2] 171",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 171,
+   "name3ds": "Mobile Shelf [2] 172",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 172,
+   "name3ds": "Mobile Shelf [2] 173",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 173,
+   "name3ds": "Mobile Shelf [2] 174",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 174,
+   "name3ds": "Mobile Shelf [2] 175",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 175,
+   "name3ds": "Mobile Shelf [2] 176",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 176,
+   "name3ds": "Mobile Shelf [2] 177",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 177,
+   "name3ds": "Mobile Shelf [2] 178",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 178,
+   "name3ds": "Mobile Shelf [2] 179",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 179,
+   "name3ds": "Mobile Shelf [2] 180",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 180,
+   "name3ds": "Mobile Shelf [2] 181",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 181,
+   "name3ds": "Mobile Shelf [2] 182",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 182,
+   "name3ds": "Mobile Shelf [2] 183",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 183,
+   "name3ds": "Mobile Shelf [2] 184",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 184,
+   "name3ds": "Mobile Shelf [2] 185",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 185,
+   "name3ds": "Mobile Shelf [2] 186",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 186,
+   "name3ds": "Mobile Shelf [2] 187",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 187,
+   "name3ds": "Mobile Shelf [2] 188",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 188,
+   "name3ds": "Mobile Shelf [2] 189",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 189,
+   "name3ds": "Mobile Shelf [2] 190",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 190,
+   "name3ds": "Mobile Shelf [2] 191",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 191,
+   "name3ds": "Mobile Shelf [2] 192",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 192,
+   "name3ds": "Mobile Shelf [2] 193",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 193,
+   "name3ds": "Mobile Shelf [2] 194",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 194,
+   "name3ds": "Mobile Shelf [2] 195",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 195,
+   "name3ds": "Mobile Shelf [2] 196",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 196,
+   "name3ds": "Mobile Shelf [2] 197",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 197,
+   "name3ds": "Mobile Shelf [2] 198",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 198,
+   "name3ds": "Mobile Shelf [2] 199",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 199,
+   "name3ds": "Mobile Shelf [2] 200",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 200,
+   "name3ds": "Mobile Shelf [2] 201",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 201,
+   "name3ds": "Mobile Shelf [2] 202",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 202,
+   "name3ds": "Mobile Shelf [2] 203",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 203,
+   "name3ds": "Mobile Shelf [2] 204",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 204,
+   "name3ds": "Mobile Shelf [2] 205",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 205,
+   "name3ds": "Mobile Shelf [2] 206",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 206,
+   "name3ds": "Mobile Shelf [2] 207",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 207,
+   "name3ds": "Mobile Shelf [2] 208",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 208,
+   "name3ds": "Mobile Shelf [2] 209",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 209,
+   "name3ds": "Mobile Shelf [2] 210",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 210,
+   "name3ds": "Mobile Shelf [2] 211",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 211,
+   "name3ds": "Mobile Shelf [2] 212",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 212,
+   "name3ds": "Mobile Shelf [2] 213",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 213,
+   "name3ds": "Mobile Shelf [2] 214",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 214,
+   "name3ds": "Mobile Shelf [2] 215",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 215,
+   "name3ds": "Mobile Shelf [2] 216",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 216,
+   "name3ds": "Mobile Shelf [2] 217",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 217,
+   "name3ds": "Mobile Shelf [2] 218",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 218,
+   "name3ds": "Mobile Shelf [2] 219",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 219,
+   "name3ds": "Mobile Shelf [2] 220",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 220,
+   "name3ds": "Mobile Shelf [2] 221",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 221,
+   "name3ds": "Mobile Shelf [2] 222",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 222,
+   "name3ds": "Mobile Shelf [2] 223",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 223,
+   "name3ds": "Mobile Shelf [2] 224",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 224,
+   "name3ds": "Mobile Shelf [2] 225",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 225,
+   "name3ds": "Mobile Shelf [2] 226",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 226,
+   "name3ds": "Mobile Shelf [2] 227",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 227,
+   "name3ds": "Mobile Shelf [2] 228",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 228,
+   "name3ds": "Mobile Shelf [2] 229",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 229,
+   "name3ds": "Mobile Shelf [2] 230",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 230,
+   "name3ds": "Mobile Shelf [2] 231",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 231,
+   "name3ds": "Mobile Shelf [2] 232",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 232,
+   "name3ds": "Mobile Shelf [2] 233",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 233,
+   "name3ds": "Mobile Shelf [2] 234",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 234,
+   "name3ds": "Mobile Shelf [2] 235",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 235,
+   "name3ds": "Mobile Shelf [2] 236",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 236,
+   "name3ds": "Mobile Shelf [2] 237",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 237,
+   "name3ds": "Mobile Shelf [2] 238",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 238,
+   "name3ds": "Mobile Shelf [2] 239",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 239,
+   "name3ds": "Mobile Shelf [2] 240",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 240,
+   "name3ds": "Mobile Shelf [2] 241",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 241,
+   "name3ds": "Mobile Shelf [2] 242",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 242,
+   "name3ds": "Mobile Shelf [2] 243",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 243,
+   "name3ds": "Mobile Shelf [2] 244",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 244,
+   "name3ds": "Mobile Shelf [2] 245",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 245,
+   "name3ds": "Mobile Shelf [2] 246",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 246,
+   "name3ds": "Mobile Shelf [2] 247",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Back",
+   "kind": "fitting"
+  },
+  {
+   "object": 247,
+   "name3ds": "Mobile Shelf [2] 248",
+   "cabinet": "980 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 248,
+   "name3ds": "Mobile Shelf [2] 249",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Vertical Division [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 249,
+   "name3ds": "Mobile Shelf [2] 250",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 250,
+   "name3ds": "Mobile Shelf [2] 251",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 251,
+   "name3ds": "Mobile Shelf [2] 252",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 252,
+   "name3ds": "Mobile Shelf [2] 253",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 253,
+   "name3ds": "Mobile Shelf [2] 254",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 254,
+   "name3ds": "Mobile Shelf [2] 255",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 255,
+   "name3ds": "Mobile Shelf [2] 256",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Bottom",
+   "kind": "fitting"
+  },
+  {
+   "object": 256,
+   "name3ds": "Mobile Shelf [2] 257",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 257,
+   "name3ds": "Mobile Shelf [2] 258",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 258,
+   "name3ds": "Mobile Shelf [2] 259",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 259,
+   "name3ds": "Mobile Shelf [2] 260",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 260,
+   "name3ds": "Mobile Shelf [2] 261",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Top",
+   "kind": "fitting"
+  },
+  {
+   "object": 261,
+   "name3ds": "Mobile Shelf [2] 262",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 262,
+   "name3ds": "Mobile Shelf [2] 263",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 263,
+   "name3ds": "Mobile Shelf [2] 264",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 264,
+   "name3ds": "Mobile Shelf [2] 265",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Right Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 265,
+   "name3ds": "Mobile Shelf [2] 266",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 266,
+   "name3ds": "Mobile Shelf [2] 267",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 267,
+   "name3ds": "Mobile Shelf [2] 268",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 268,
+   "name3ds": "Mobile Shelf [2] 269",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Left Side",
+   "kind": "fitting"
+  },
+  {
+   "object": 269,
+   "name3ds": "Mobile Shelf [2] 270",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 270,
+   "name3ds": "Mobile Shelf [2] 271",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 271,
+   "name3ds": "Mobile Shelf [2] 272",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 272,
+   "name3ds": "Mobile Shelf [2] 273",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  },
+  {
+   "object": 273,
+   "name3ds": "Mobile Shelf [2] 274",
+   "cabinet": "990 DOUBLE",
+   "copy": 0,
+   "part": "Plinth 1 [1]",
+   "kind": "fitting"
+  }
+ ]
+}

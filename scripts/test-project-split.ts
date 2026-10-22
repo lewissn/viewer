@@ -19,7 +19,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import { read3ds, write3ds, hasOnlyIdentityMatrices, type ThreeDsObject } from "../lib/threeDs";
-import { baseName, groupObjects, groupOffset, splitProject, unionBox } from "../lib/splitProject";
+import { baseName, groupObjects, groupOffset, splitProject, splitProjectByDxf, unionBox } from "../lib/splitProject";
+import { readPolyboardDxf } from "../lib/polyboardDxf";
 import { countHardwareFittings } from "../lib/hardwareFittings";
 import { parseCabinetCsv } from "../lib/parseCabinetCsv";
 import { detectProject, stripCommonRoot, type ImportEntry } from "../lib/importFolder";
@@ -75,11 +76,15 @@ async function main() {
 
     for (const source of detection.projectModels) {
       const file = read3ds(new Uint8Array(await source.model.data.arrayBuffer()));
-      const split = splitProject(file.objects);
+      const byDxf = source.dxf
+        ? splitProjectByDxf(file.objects, readPolyboardDxf(new TextDecoder("windows-1252").decode(await source.dxf.data.arrayBuffer())))
+        : null;
+      const split = byDxf ?? splitProject(file.objects);
       console.log(
         `${source.model.path}: ${file.objects.length} objects → ${split.panelCount} panels, ` +
           `${split.hardwareCount} hardware, ${split.room.length} room; identity matrices ${hasOnlyIdentityMatrices(file)}; ` +
-          `hardware lists [${source.hardwareLists.map((h) => h.path).join(", ")}]`
+          `hardware lists [${source.hardwareLists.map((h) => h.path).join(", ")}]; ` +
+          (source.dxf ? `DXF ${source.dxf.path} ${byDxf ? "used" : "DOESN'T MATCH, guessed instead"}` : "no DXF, guessed")
       );
       const candidates = result.candidates.filter((c) => c.modelPath === source.model.path);
       candidates.forEach((c, i) => {

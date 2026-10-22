@@ -121,6 +121,9 @@ export function generateSteps(
   const backFixedToCarcass = flags.backFixedToCarcass ?? false;
   const hasDivider = has("Vertical Division");
   const dividerCount = hasDivider ? Math.max(1, flags.dividerCount ?? 1) : 0;
+  // "the divider" / "the 3 dividers"; the inner columns lie between two dividers
+  const theDividers = dividerCount === 1 ? "the divider" : `the ${dividerCount} dividers`;
+  const innerColumns = dividerCount === 2 ? "inner column" : "inner columns";
 
   // Helper: add step with optional meta
   function addStepWithMeta(
@@ -461,9 +464,10 @@ export function generateSteps(
           ? "Lay the dividers out flat to begin the inner assembly, with their face frame pieces attached."
           : "Lay the dividers out flat to begin the inner assembly.";
       } else {
+        const frames = dividerCount === 1 ? "its face frame piece" : "their face frame pieces";
         copy = hasFF
-          ? `Connect the divider(s) to ${dividerAnchor}, with their face frame pieces attached.`
-          : `Connect the divider(s) to ${dividerAnchor}.`;
+          ? `Connect ${theDividers} to ${dividerAnchor}, with ${frames} attached.`
+          : `Connect ${theDividers} to ${dividerAnchor}.`;
       }
 
       const helpers: StepHelper[] = [];
@@ -484,7 +488,7 @@ export function generateSteps(
         if (assemblyFirst) {
           helpers.push({
             title: "Why this matters",
-            content: `${dividerCount} dividers make ${dividerCount + 1} columns. The shelves in the inner column(s) are closed in once the dividers meet ${dividerAnchor}, so the inner structure is built as one piece first and fitted complete.`,
+            content: `${dividerCount} dividers make ${dividerCount + 1} columns. The shelves in the ${innerColumns} are closed in once the dividers meet ${dividerAnchor}, so the inner structure is built as one piece first and fitted complete.`,
           });
         }
       }
@@ -517,10 +521,13 @@ export function generateSteps(
           : "Lay the top panel face-down with the front edge on the floor. This unit is built top-down and stood upright once complete.";
       } else if (hasDivider) {
         copy = hasFF
-          ? "Attach the top panel over the divider(s), with its face frame piece attached."
-          : "Attach the top panel over the divider(s) to complete the inner structure.";
+          ? `Attach the top panel over ${theDividers}, with its face frame piece attached.`
+          : `Attach the top panel over ${theDividers} to complete the inner structure.`;
         beforeTightening =
-          "With the front edges still facing the floor, lower the top panel onto the divider(s) and lock the cams. Ensure each divider is flush with the top edge before tightening.";
+          `With the front edges still facing the floor, lower the top panel onto ${theDividers} and lock the cams. ` +
+          (dividerCount === 1
+            ? "Ensure the divider is flush with the top edge before tightening."
+            : "Ensure each divider is flush with the top edge before tightening.");
       } else {
         copy = hasFF
           ? "Fit the top panel, with the face frame piece attached."
@@ -552,7 +559,7 @@ export function generateSteps(
           helpers: [
             {
               title: "Why this matters",
-              content: `These shelves sit in the inner column(s), enclosed by a divider on both sides. Once the dividers are fixed to ${dividerAnchor} there is no way to slide one in, so they have to go in now while the dividers are still free to move.`,
+              content: `These shelves sit in the ${innerColumns}, enclosed by a divider on both sides. Once the dividers are fixed to ${dividerAnchor} there is no way to slide one in, so they have to go in now while the dividers are still free to move.`,
             },
             {
               title: "Before tightening",

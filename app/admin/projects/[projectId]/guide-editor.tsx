@@ -129,6 +129,8 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
 
   const modelUrl = cabinet.modelFileUrl;
   const textureKey = (cabinet.textureFileUrls ?? []).join("\n");
+  // Fixed for the cabinet: the editor only changes its overrides
+  const [fittingLocations] = useState(() => cabinet.fittingLocations);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -156,7 +158,7 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
         edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(68, 68, 68), 1),
         onModelLoaded: () => {
           if (cancelled) return;
-          controller.initDynamic(viewer, OV, previewOverrides(draftRef.current));
+          controller.initDynamic(viewer, OV, previewOverrides(draftRef.current), fittingLocations);
           setSnapshot(controller.getEditorSnapshot());
         },
         onModelLoadFailed: () => {
@@ -201,7 +203,7 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
       }
       viewerRef.current = null;
     };
-  }, [modelUrl, textureKey]);
+  }, [modelUrl, textureKey, fittingLocations]);
 
   /** Re-run the guide controller with a new step structure */
   function rebuildPreview(d: Draft): Snapshot | null {
@@ -210,7 +212,7 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
     const OV = ovRef.current;
     if (!c || !viewer || !OV || !snapshot) return snapshot;
     c.close(); // back to assembled positions before parts are re-collected
-    c.initDynamic(viewer, OV, previewOverrides(d));
+    c.initDynamic(viewer, OV, previewOverrides(d), fittingLocations);
     const snap = c.getEditorSnapshot();
     setSnapshot(snap);
     return snap;
