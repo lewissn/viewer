@@ -53,7 +53,9 @@ export function buildCabinetSummary(
   );
   const hasDrawers = drawerBoxCount > 0;
 
-  const dividerCount = count("Vertical Division");
+  // The controller splits dividers into centre/outer when shelves are trapped
+  const dividerCount =
+    count("Vertical Division") + count("Vertical Division - Centre") + count("Vertical Division - Outer");
   // Multi-divider units have their shelves split into centre/outer subgroups by
   // geometric refinement, so the total spans all three keys.
   const fixedShelfCount =
@@ -145,7 +147,9 @@ export function buildCabinetSummary(
     notes.push(
       structuralBack
         ? "Top panel overlays the sides — it is fitted once the sides are on, before the back."
-        : "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
+        : hasRearBrace
+          ? "Top panel overlays the sides — it is fitted last, after the back but before the wall bar."
+          : "Top panel overlays the sides — it is fitted last, once the back is in."
     );
   }
   if (structuralBack) {
@@ -156,8 +160,11 @@ export function buildCabinetSummary(
   // Mirrors the step generator: centre shelves mean the build starts from the
   // divider assembly rather than the base panel.
   if (centreShelfCount > 0) {
+    const inner = dividerCount === 2 ? "the inner column closes" : "the inner columns close";
     notes.push(
-      `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first — the inner column(s) close up once the dividers meet the base panel, so those shelves cannot be added later.`
+      count("Vertical Division - Centre") > 0
+        ? `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first, out from the centre divider — ${inner} up once the dividers meet the base panel, so those shelves cannot be added later.`
+        : `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first — ${inner} up once the dividers meet the base panel, so those shelves cannot be added later.`
     );
   } else if (dividerCount > 0) {
     notes.push(

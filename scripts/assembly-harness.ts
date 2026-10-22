@@ -11,7 +11,9 @@
  *
  * Inputs are per-cabinet .3ds exports, or .json files holding an array of
  * { name, min: [x,y,z], max: [x,y,z] } objects (e.g. one cabinet cut out of a
- * whole-project export).
+ * whole-project export). A "<model>.locations.json" beside a model holds its
+ * fitting locations (mesh name → { part, face, label }, as saved for a cabinet
+ * split with a 3D DXF) and is passed to the guide like the app does.
  *
  * Flags:
  *   --lib <dir>   load the controller and classifier from another copy of
@@ -24,11 +26,12 @@
  *                 it right
  *   --parts       also list each step's panels (label, quantity, size) as
  *                 the customer wizard shows them
+ *   --debug       show the guide's own ?debug log while it builds each guide
  *
  * Files are only read, never written.
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { basename, resolve } from "path";
 import {
   repairStepOrder,
@@ -189,10 +192,13 @@ const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
 const mutate = args.includes("--mutate");
 const showParts = args.includes("--parts");
+// The guide's own ?debug log (joint paths, refinements), shown as it runs
+const debug = args.includes("--debug");
+if (debug) (globalThis as { window?: unknown }).window = { location: { search: "?debug" } };
 const libIdx = args.indexOf("--lib");
 const libDir = libIdx >= 0 ? resolve(args[libIdx + 1]) : resolve(__dirname, "../lib");
 const files = args.filter(
-  (a, i) => !a.startsWith("--") && !(libIdx >= 0 && i === libIdx + 1)
+  (a, i) => !a.startsWith("--") && !(libIdx >= 0 && i === libIdx + 1) && !a.endsWith(".locations.json")
 );
 
 const AXIS_DIRS: [number, number, number][] = [
@@ -261,11 +267,16 @@ async function main() {
       ? JSON.parse(readFileSync(file, "utf8"))
       : read3ds(file);
 
+    // Fitting locations saved beside the model ("<model>.locations.json"), as
+    // a cabinet split with a 3D DXF has them
+    const locationsFile = file.replace(/\.(3ds|json)$/i, ".locations.json");
+    const locations = existsSync(locationsFile) ? JSON.parse(readFileSync(locationsFile, "utf8")) : undefined;
+
     const controller = new AssemblyGuideController();
     const log = console.log;
-    console.log = () => {};
+    if (!debug) console.log = () => {};
     try {
-      controller.initDynamic(fakeViewer(objects), { RGBColor: class {} }, {});
+      controller.initDynamic(fakeViewer(objects), { RGBColor: class {} }, {}, locations);
     } finally {
       console.log = log;
     }

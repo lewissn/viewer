@@ -21,6 +21,15 @@ export interface AssemblyStep {
   helpers?: StepHelper[];
   /** True if this step uses fittings from the sidebar */
   usesFittings?: boolean;
+  /**
+   * Set by the guide: the model lies front-edge-down for this step, as the
+   * customer builds it
+   */
+  faceDown?: boolean;
+  /** Set by the guide: the cabinet is stood upright at the start of this step */
+  standUp?: boolean;
+  /** Set by the guide: the step squares the carcass, with its diagonals drawn on the model */
+  squareCheck?: boolean;
 }
 
 export interface ExplodeConfig {
