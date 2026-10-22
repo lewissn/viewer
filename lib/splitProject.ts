@@ -23,7 +23,13 @@
 
 import type { ThreeDsObject, Vec3 } from "./threeDs";
 import { classifyPart, extractDrawerIndex } from "./classifyPart";
-import { matchThreeDsObjects, type DxfLeaf, type DxfStructure } from "./polyboardDxf";
+import {
+  describePlacements,
+  matchThreeDsObjects,
+  placeFittings,
+  type DxfLeaf,
+  type DxfStructure,
+} from "./polyboardDxf";
 
 export type GroupKind = "cabinet" | "loose" | "accessories";
 
@@ -49,6 +55,8 @@ export interface SplitGroup {
   copies: number;
   /** The cabinet's PolyBoard name, when a 3D DXF export supplied it */
   name?: string;
+  /** Panel and face of each hardware mesh, when a 3D DXF export supplied them */
+  placements?: Map<ThreeDsObject, { part: string; face: string }>;
 }
 
 export interface ProjectSplit {
@@ -409,6 +417,15 @@ export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): 
     const panels = own.filter((o) => leafOf.get(o)!.kind === "panel");
     const hardware = own.filter((o) => leafOf.get(o)!.kind === "fitting");
     const kind: GroupKind = isCarcass(panels) ? "cabinet" : "loose";
+
+    const objectOf = new Map(own.map((o) => [leafOf.get(o)!, o]));
+    const leaves = own.map((o) => leafOf.get(o)!);
+    const placed = placeFittings(leaves);
+    const faces = describePlacements(placed, leaves);
+    const placements = new Map<ThreeDsObject, { part: string; face: string }>();
+    for (const p of placed) {
+      if (p.panel) placements.set(objectOf.get(p.fitting)!, { part: p.fitting.part, face: faces.get(p.fitting)! });
+    }
     groups.push({
       kind,
       panels,
@@ -418,6 +435,7 @@ export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): 
       copy: cab.copy,
       copies: dxf.cabinets.filter((c) => c.name === cab.name).length,
       name: cab.name,
+      placements,
     });
   }
 

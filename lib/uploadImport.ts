@@ -141,6 +141,7 @@ export async function uploadAndBuildCabinets(
         .filter((u): u is string => !!u),
       erpParts: parts,
       erpFittings: fittings,
+      fittingLocations: cab.prepared?.fittingLocations,
     });
   }
 

@@ -6,6 +6,7 @@ import type { Project, CabinetInstance } from "@/lib/projects";
 import {
   AssemblyGuideController,
   type ControllerState,
+  type StepFitting,
   type StepPart,
 } from "@/lib/assemblyGuideController";
 import type { StepHelper } from "@/lib/assemblyGuides";
@@ -165,7 +166,8 @@ export default function ProjectClient({ project }: Props) {
           controller.initDynamic(
             embeddedViewer,
             OV,
-            cabinet.guideOverrides
+            cabinet.guideOverrides,
+            cabinet.fittingLocations
           );
           // Offer to resume if we have a valid saved step for this cabinet.
           try {
@@ -359,6 +361,8 @@ export default function ProjectClient({ project }: Props) {
       : null;
   const currentStepParts =
     currentStepData != null ? (state.stepParts?.[stepIndex] ?? []) : [];
+  const currentStepFittings =
+    currentStepData != null ? (state.stepFittings?.[stepIndex] ?? []) : [];
   const selectedPartId =
     selectedPart?.step === stepIndex ? selectedPart.id : null;
 
@@ -840,8 +844,13 @@ export default function ProjectClient({ project }: Props) {
                       {currentStepData.copy}
                     </TermAwareText>
 
+                    {/* Fittings going onto this step's panels, where known */}
+                    {currentStepFittings.length > 0 && (
+                      <StepFittingsList fittings={currentStepFittings} />
+                    )}
+
                     {/* Fittings reference */}
-                    {currentStepData.usesFittings && hasFittings && (
+                    {currentStepData.usesFittings && hasFittings && currentStepFittings.length === 0 && (
                       <p className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-1.5">
                         <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.384-3.08A1.615 1.615 0 015 10.683V6.748a1.615 1.615 0 011.036-1.506l5.384-3.08a1.615 1.615 0 011.16 0l5.384 3.08A1.615 1.615 0 0119 6.748v3.935a1.615 1.615 0 01-1.036 1.506l-5.384 3.08a1.615 1.615 0 01-1.16 0z" />
@@ -1014,6 +1023,36 @@ function DrawerSubSteps() {
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+/** Fittings for the step's panels: what, how many, and which face they go on */
+function StepFittingsList({ fittings }: { fittings: StepFitting[] }) {
+  return (
+    <div className="mb-2">
+      <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
+        Fittings for this step
+      </p>
+      <ul className="space-y-0.5">
+        {fittings.map((f) => (
+          <li
+            key={`${f.label}|${f.part}|${f.face}`}
+            className="flex items-baseline gap-2 text-[12px]"
+          >
+            <span className="flex-shrink-0 w-7 text-right font-medium tabular-nums text-[var(--foreground)]">
+              {f.quantity}×
+            </span>
+            <span className="min-w-0">
+              <span className="font-medium text-[var(--foreground)]">{f.label}</span>
+              <span className="text-[var(--muted)]">
+                {" "}
+                · {f.part}, {f.face}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

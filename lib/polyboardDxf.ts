@@ -424,3 +424,59 @@ export function placeFittings(leaves: DxfLeaf[]): FittingPlacement[] {
   }
   return out;
 }
+
+const FACE_WORDS: Record<0 | 1 | 2, [string, string]> = {
+  0: ["left face", "right face"],
+  1: ["front face", "back face"],
+  2: ["underside", "top face"],
+};
+const EDGE_WORDS: Record<0 | 1 | 2, [string, string]> = {
+  0: ["left edge", "right edge"],
+  1: ["front edge", "back edge"],
+  2: ["bottom edge", "top edge"],
+};
+
+/**
+ * Plain words for where each fitting sits on its panel: "inside face",
+ * "underside", "bottom edge"... An upright on the outside of the cabinet (a
+ * side) has an inside and an outside face; one within it (a divider) has a
+ * left and a right face, or "both faces" when it has fittings on each.
+ *
+ * Pass the placements and leaves of ONE cabinet copy, as for placeFittings.
+ */
+export function describePlacements(placements: FittingPlacement[], leaves: DxfLeaf[]): Map<DxfLeaf, string> {
+  const t = 0.6;
+  const inside = interiorBox(leaves);
+  const isInterior = (a: number, v: number) => v > inside.lo[a] - 0.01 && v < inside.hi[a] + 0.01;
+  const twoSided = new Set<DxfLeaf>();
+  for (const p of placements) {
+    if (!p.panel || !p.facesInterior) continue;
+    const other = p.on === "min" ? "max" : "min";
+    if (placements.some((q) => q.panel === p.panel && q.on === other && q.facesInterior)) twoSided.add(p.panel);
+  }
+  const out = new Map<DxfLeaf, string>();
+  for (const p of placements) {
+    const { fitting: f, panel, axis, on } = p;
+    let words = "in the board";
+    if (!panel) words = "";
+    else if ((on === "min" || on === "max") && twoSided.has(panel) && p.facesInterior) words = "both faces";
+    else if ((on === "min" || on === "max") && axis === 0) {
+      // Step off the opposite face to see whether the panel is within the cabinet
+      const opposite = on === "max" ? panel.localMin[0] - 0.5 : panel.localMax[0] + 0.5;
+      if (!p.facesInterior) words = "outside face";
+      else if (!isInterior(0, opposite)) words = "inside face";
+      else words = FACE_WORDS[0][on === "min" ? 0 : 1];
+    } else if (on === "min" || on === "max") words = FACE_WORDS[axis][on === "min" ? 0 : 1];
+    else if (on === "edge") {
+      // The rim it is drilled into: the first other axis where it reaches the board's end
+      for (const a of ([2, 1, 0] as const).filter((a) => a !== axis)) {
+        if (f.localMin[a] <= panel.localMin[a] + t) words = EDGE_WORDS[a][0];
+        else if (f.localMax[a] >= panel.localMax[a] - t) words = EDGE_WORDS[a][1];
+        else continue;
+        break;
+      }
+    }
+    out.set(f, words);
+  }
+  return out;
+}

@@ -28,9 +28,16 @@ import {
   type SplitGroup,
 } from "./splitProject";
 import { readPolyboardDxf } from "./polyboardDxf";
-import { assignFittings, parseHardwareList, type FittingsSource, type HardwareBlock } from "./hardwareFittings";
+import {
+  assignFittings,
+  fittingLabel,
+  parseHardwareList,
+  type FittingsSource,
+  type HardwareBlock,
+} from "./hardwareFittings";
 import { classifyPart } from "./classifyPart";
 import type { DetectedCabinet, ImportEntry, ProjectModelSource } from "./importFolder";
+import type { FittingLocation } from "./projects";
 
 /** A project saved this long after its model was exported is worth flagging. */
 const STALE_AFTER_MS = 60_000;
@@ -52,6 +59,8 @@ export interface SplitCandidate {
   /** Guide groups the panels fall into */
   groupKeys: string[];
   fittings: FittingsSource;
+  /** Each fitting mesh's panel and face, by mesh name, when a 3D DXF gave them */
+  fittingLocations?: Record<string, FittingLocation>;
   textures: ImportEntry[];
   /** Project model it came from */
   modelPath: string;
@@ -92,6 +101,17 @@ function texturesFor(
   }
   const matched = textures.filter((t) => wanted.has(fileName(t.path).toLowerCase()));
   return matched.length > 0 || wanted.size === 0 ? matched : textures;
+}
+
+/** A group's fitting placements keyed by mesh name, as the cabinet's .3ds names them. */
+function fittingLocations(group: SplitGroup): Record<string, FittingLocation> | undefined {
+  if (!group.placements) return undefined;
+  const out: Record<string, FittingLocation> = {};
+  for (const [o, { part, face }] of group.placements) {
+    const label = fittingLabel(o);
+    out[o.name] = label ? { part, face, label } : { part, face };
+  }
+  return out;
 }
 
 /** "3 days", "40 minutes" */
@@ -186,6 +206,7 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
         partNames,
         groupKeys: [...new Set(partNames.map((n) => classifyPart(n).groupKey))].sort(),
         fittings: fittings[g],
+        fittingLocations: fittingLocations(group),
         textures: texturesFor(file, group, source.textures, byMaterial),
         modelPath: source.model.path,
         build: () => write3ds(file, groupObjects(group), groupOffset(group)),
@@ -237,6 +258,7 @@ export function candidatesToCabinets(
         parts: candidate.partNames,
         fittings: candidate.fittings.fittings,
         warnings: candidate.fittings.notes,
+        fittingLocations: candidate.fittingLocations,
       },
     };
   });

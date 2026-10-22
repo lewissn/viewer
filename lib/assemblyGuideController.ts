@@ -20,7 +20,7 @@ import {
   generateGuideFromGroups,
   type GeneratedStep,
 } from "./classifyPart";
-import type { GuideOverrides } from "./projects";
+import type { FittingLocation, GuideOverrides } from "./projects";
 import { resolveGuideSteps } from "./assembly/applyOverrides";
 import {
   buildCabinetSummary,
@@ -134,6 +134,23 @@ interface PartMesh {
   isFitting?: boolean;
   /** Door or drawer front this part is mounted on (handles, knobs) */
   attachedTo?: PartMesh;
+  /**
+   * Panel a fitting is fitted on, from the cabinet's fitting locations: the
+   * fitting shows, moves and highlights with it.
+   */
+  carrier?: PartMesh;
+  location?: FittingLocation;
+}
+
+/** One line of a step's fittings list: fittings of one kind on one face of a panel */
+export interface StepFitting {
+  /** What it is, e.g. "Rafix Cam" */
+  label: string;
+  quantity: number;
+  /** Board label of the panel it goes on, e.g. "Left Side" */
+  part: string;
+  /** e.g. "inside face", "underside", "bottom edge" */
+  face: string;
 }
 
 /** One line of a step's parts list: the panels that share a label and size */
@@ -161,6 +178,11 @@ export interface ControllerState {
    * Fittings and handles are left out.
    */
   stepParts?: StepPart[][];
+  /**
+   * Fittings going onto each step's panels, parallel to activeSteps. Only
+   * for cabinets imported with fitting locations; empty lists otherwise.
+   */
+  stepFittings?: StepFitting[][];
   isAnimating: boolean;
   /** Context-aware build summary (dynamic mode only) */
   cabinetSummary?: CabinetBuildSummary;
@@ -282,8 +304,17 @@ export class AssemblyGuideController {
 
   // ── Initialization (Dynamic classification mode) ──
 
-  /** Called after model has loaded — uses classifyPart() for dynamic guide generation */
-  initDynamic(embeddedViewer: any, OV: any, overrides?: GuideOverrides) {
+  /**
+   * Called after model has loaded — uses classifyPart() for dynamic guide generation.
+   * With fitting locations (cabinets split using a 3D DXF), each fitting
+   * shows with the panel it is fitted on instead of only on the finished cabinet.
+   */
+  initDynamic(
+    embeddedViewer: any,
+    OV: any,
+    overrides?: GuideOverrides,
+    fittingLocations?: Record<string, FittingLocation>
+  ) {
     this.viewerEngine = embeddedViewer.GetViewer();
     this.OV = OV;
     this._dynamicMode = true;
@@ -327,6 +358,9 @@ export class AssemblyGuideController {
     // Full-thickness strips behind the back panels ("Double-Back" rails) are
     // wall bars, not backs — they would otherwise read as a structural back
     this.refineBackRails();
+
+    // Fittings with a known panel ride along with it (groups are final now)
+    this.placeLocatedFittings(fittingLocations);
 
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
@@ -1222,6 +1256,61 @@ export class AssemblyGuideController {
     }
   }
 
+  /**
+   * Tie each located fitting to the panel it is fitted on: the nearest panel
+   * whose label is the location's part (a double door or split back has
+   * several). The fitting takes that panel's group, so it shows, moves and
+   * highlights with it. Handles already ride on their front and are left be.
+   */
+  private placeLocatedFittings(locations?: Record<string, FittingLocation>) {
+    if (!locations) return;
+    const centre = (b: { min: Vec3; max: Vec3 }): Vec3 => ({
+      x: (b.min.x + b.max.x) / 2,
+      y: (b.min.y + b.max.y) / 2,
+      z: (b.min.z + b.max.z) / 2,
+    });
+    const panelsByLabel = new Map<string, PartMesh[]>();
+    for (const p of this.allParts) {
+      if (locations[p.name.trim()] || p.isFitting || p.attachedTo) continue;
+      const label = exportBaseName(p.name.trim());
+      panelsByLabel.set(label, [...(panelsByLabel.get(label) ?? []), p]);
+    }
+
+    let placed = 0;
+    for (const part of this.allParts) {
+      const location = locations[part.name.trim()];
+      if (!location || part.attachedTo) continue;
+      const fb = this.getPartWorldBounds(part);
+      const candidates = panelsByLabel.get(location.part) ?? [];
+      let carrier: PartMesh | undefined;
+      let best = Infinity;
+      for (const panel of candidates) {
+        const pb = this.getPartWorldBounds(panel);
+        if (!fb || !pb) {
+          carrier ??= panel;
+          continue;
+        }
+        const c = centre(fb);
+        const d = (["x", "y", "z"] as const).reduce(
+          (s, a) => s + Math.max(0, pb.min[a] - c[a], c[a] - pb.max[a]) ** 2,
+          0
+        );
+        if (d < best) {
+          best = d;
+          carrier = panel;
+        }
+      }
+      part.isFitting = true;
+      part.location = location;
+      if (!carrier) continue;
+      part.carrier = carrier;
+      part.groupKey = carrier.groupKey;
+      part.drawerIndex = carrier.drawerIndex;
+      placed++;
+    }
+    log(`Located fittings: ${placed} placed on their panels`);
+  }
+
   // ── Step validation ──
 
   /** Rotate a direction from a part's local (parent) frame into world space */
@@ -1304,9 +1393,9 @@ export class AssemblyGuideController {
       c.part.explodedPos = { x: a.x + d.x * dist, y: a.y + d.y * dist, z: a.z + d.z * dist };
       log(`Path: "${c.part.name}" arrives along (${d.x}, ${d.y}, ${d.z}) — its default path is blocked`);
     }
-    // Handles travel with the front they are mounted on
+    // Handles travel with the front they are mounted on, fittings with their panel
     for (const part of this.allParts) {
-      const front = part.attachedTo;
+      const front = part.attachedTo ?? part.carrier;
       if (!front) continue;
       part.explodedPos = {
         x: part.assembledPos.x + front.explodedPos.x - front.assembledPos.x,
@@ -1458,7 +1547,8 @@ export class AssemblyGuideController {
 
   private applyExplodedToAll() {
     for (const part of this.allParts) {
-      if (part.isFitting) continue; // Fittings stay assembled (hidden during steps)
+      // Fittings stay assembled (hidden during steps), unless they go with a panel
+      if (part.isFitting && !part.carrier) continue;
       this.setPartPosition(part, part.explodedPos);
     }
     this.renderViewer();
@@ -1605,6 +1695,11 @@ export class AssemblyGuideController {
         }
       }
 
+      // ...and the fittings on those panels
+      const panels = new Set(parts);
+      for (const p of this.allParts) {
+        if (p.carrier && panels.has(p.carrier)) parts.push(p);
+      }
       return parts;
     }
     // Legacy mode: prefix matching
@@ -1702,7 +1797,8 @@ export class AssemblyGuideController {
       options.currentStepIndex > lastDrawerIdx;
 
     for (const part of this.allParts) {
-      // Fittings are hidden during assembly steps — only shown in complete state
+      // Fittings are hidden during assembly steps — only shown in complete
+      // state — unless they go with a panel (set below, once panels are done)
       if (part.isFitting) {
         this.setPartVisible(part, false);
         continue;
@@ -1755,6 +1851,10 @@ export class AssemblyGuideController {
       }
 
       this.setPartVisible(part, isAssembled || isCurrent);
+    }
+
+    for (const part of this.allParts) {
+      if (part.carrier) this.setPartVisible(part, part.carrier.threeMesh.visible !== false);
     }
   }
 
@@ -1877,6 +1977,7 @@ export class AssemblyGuideController {
       detectedGroups: this._detectedGroups,
       validationIssues: this._validationIssues,
       stepParts: this._dynamicMode ? this._stepParts : undefined,
+      stepFittings: this._dynamicMode ? this._stepFittings : undefined,
     };
   }
 
@@ -2079,6 +2180,8 @@ export class AssemblyGuideController {
   /** Panels per active step, and the meshes behind each list line */
   private _stepParts: StepPart[][] = [];
   private _stepPartMeshes: Map<string, PartMesh[]>[] = [];
+  /** Fittings per active step, from the cabinet's fitting locations */
+  private _stepFittings: StepFitting[][] = [];
   // Every mesh name carries the export's trailing index (see buildStepParts)
   private _namesIndexed = false;
 
@@ -2113,7 +2216,10 @@ export class AssemblyGuideController {
       };
     }
     if (part.isFitting) {
-      return { label: "Fitting", width: 0, height: 0, thickness: 0 };
+      const where = part.carrier && part.location
+        ? ` · ${this.boardLabel(part.carrier)}, ${part.location.face}`
+        : "";
+      return { label: `${part.location?.label ?? "Fitting"}${where}`, width: 0, height: 0, thickness: 0 };
     }
     return { label: this.boardLabel(part), ...this.getBoardSize(part) };
   }
@@ -2136,10 +2242,25 @@ export class AssemblyGuideController {
 
     this._stepParts = [];
     this._stepPartMeshes = [];
+    this._stepFittings = [];
     for (const step of this._activeSteps) {
-      let parts = this.getPartsForStep(step).filter(
-        (p) => !p.isFitting && !p.attachedTo
-      );
+      const all = this.getPartsForStep(step);
+      let parts = all.filter((p) => !p.isFitting && !p.attachedTo);
+
+      // Fittings going onto this step's panels, by kind, panel and face.
+      // Drilling marks and screw heads have no label and aren't listed.
+      const fittings = new Map<string, StepFitting>();
+      for (const p of all) {
+        if (!p.carrier || !p.location?.label) continue;
+        const part = labelOf(p.carrier);
+        const { label, face } = p.location;
+        const key = `${label}|${part}|${face}`;
+        const line = fittings.get(key);
+        if (line) line.quantity++;
+        else fittings.set(key, { label, quantity: 1, part, face });
+      }
+      this._stepFittings.push(Array.from(fittings.values()));
+
       if (step.drawerMode === "insertAll") {
         const fronts = parts.filter((p) => p.groupKey === "Drawer");
         if (fronts.length > 0) parts = fronts;

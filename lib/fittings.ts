@@ -128,6 +128,7 @@ const ALIASES: Record<string, AliasEntry> = {
   "16MM SCREW (HANGING RAIL MARKINGS)2": [{ partId: "HANGING_RAIL_END", qty: 2 }, { partId: "SCREW_17MM", qty: 2 }],
   "30MM PANHEAD SCREW (BACK PANEL)": "SCREW_30MM_PANHEAD",
   "BACK CORNER PANEL SCREWS (RIGHT ANGLE)": "BACK_CORNER_SCREW",
+  "L BRACKET": "L_BRACKET",
   "TITUS PUSH TO OPEN PISTON": [
     { partId: "PTO_PISTON", qty: 1 }, { partId: "PTO_PLATE", qty: 1 },
     { partId: "SYSTEM_SCREW", qty: 2 },
@@ -240,6 +241,7 @@ const CANONICAL_PARTS: Record<string, CanonicalPart> = {
   UNHANDED_BRACKET: { id: "UNHANDED_BRACKET", label: "Unhanded Bracket", category: "BRACKETS", description: "A universal wall-mounting bracket that works on either side of the cabinet. Hooks onto the wall plate for secure hanging." },
   UNHANDED_BRACKET_PLATE: { id: "UNHANDED_BRACKET_PLATE", label: "Unhanded Bracket Plate", category: "BRACKETS", description: "The wall plate for the unhanded bracket. Screwed to the wall with plugs and provides the hook point." },
   ANTI_TILT_BRACKET: { id: "ANTI_TILT_BRACKET", label: "Anti-Tilt Bracket", category: "BRACKETS", description: "A safety bracket that prevents tall cabinets from tipping forward. Secured to both the cabinet top and the wall." },
+  L_BRACKET: { id: "L_BRACKET", label: "L-Bracket", category: "BRACKETS", description: "A metal L-shaped bracket screwed under the top at a back corner. Its other leg reaches past the back to fix the cabinet to the wall." },
   ANTI_TILT_PLATE: { id: "ANTI_TILT_PLATE", label: "Anti-Tilt Plate", category: "BRACKETS", description: "The wall plate for the anti-tilt bracket. Fixed to the wall and interlocks with the cabinet bracket." },
   DRAWER_RUNNER_250_450: { id: "DRAWER_RUNNER_250-450", label: "Drawer Runner 250-450", category: "DRAWERS", description: "An undermount soft-close drawer runner suitable for drawer depths between 250mm and 450mm." },
   DRAWER_RUNNER_500: { id: "DRAWER_RUNNER_500", label: "Drawer Runner 500", category: "DRAWERS", description: "An undermount soft-close drawer runner for 500mm deep drawers." },

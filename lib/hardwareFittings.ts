@@ -9,9 +9,10 @@
  *    Calibrated against per-cabinet CSVs (Christopher Mr #12165, Sarah Culloty
  *    #11569, Richard Brandon #12733), these counts match exactly for cams,
  *    back pins, corner screws, shelf pins, hinges and anti-tip brackets.
- *    Screws can't be told apart (30mm, 40mm and panhead heads share a mesh),
- *    and runners, legs, wall brackets and dowels aren't drawn at all, so none
- *    of those are counted.
+ *    L-brackets and divider legs are recognised from #13077 but not yet
+ *    checked against a CSV. Screws can't be told apart (30mm, 40mm and
+ *    panhead heads share a mesh), and runners, most legs, wall brackets and
+ *    dowels aren't drawn at all, so none of those are counted.
  *
  * 2. The project hardware list ("<Customer> - <order>.txt"), which PolyBoard
  *    writes with one block of fittings per cabinet — the same rows the CSV
@@ -24,6 +25,7 @@
 import type { ThreeDsObject } from "./threeDs";
 import { baseName, type SplitGroup } from "./splitProject";
 import {
+  getCanonicalPart,
   resolveErpFitting,
   resolveFittingsWithReport,
   sortFittings,
@@ -39,6 +41,8 @@ type MeshKind =
   | "antiTip"
   | "anoukKnob"
   | "anoukHandle"
+  | "lBracket"
+  | "leg100"
   /** Drawn but deliberately not counted (screw heads, pin holes) */
   | "skip";
 
@@ -61,6 +65,11 @@ const SIGNATURES: MeshSignature[] = [
   { vertices: 1666, faces: 602, dims: [13, 39, 100], kind: "antiTip" },
   { vertices: 1504, faces: 504, dims: [11, 11, 20], kind: "anoukKnob" },
   { vertices: 2206, faces: 746, dims: [14, 37, 220], kind: "anoukHandle" },
+  // Under the top at each back corner, reaching past the back to the wall
+  // (Desmond Venter #13077, identified by Lewis)
+  { vertices: 76, faces: 28, dims: [13, 15, 77], kind: "lBracket" },
+  // Hafele plastic leg under a vertical division, floor to a 100mm-high bottom
+  { vertices: 3710, faces: 1254, dims: [80, 92, 102], kind: "leg100" },
   // Screw heads: 30mm, 40mm and panhead all look the same
   { vertices: 1400, faces: 476, dims: [0, 4, 4], kind: "skip" },
   // Shelf pin hole markers
@@ -80,6 +89,33 @@ function meshKind(o: ThreeDsObject): MeshKind | null {
       s.dims.every((v, i) => Math.abs(v - d[i]) <= 1)
   );
   return sig?.kind ?? null;
+}
+
+/** Catalogue part a mesh stands for, to name it the way the fittings list does */
+const KIND_PARTS: Partial<Record<MeshKind, string>> = {
+  cam: "RAFIX_CAM",
+  panelPin: "PANEL_PIN",
+  cornerScrew: "BACK_CORNER_SCREW",
+  shelfPin: "SHELF_PIN",
+  antiTip: "ANTI_TILT_BRACKET",
+  lBracket: "L_BRACKET",
+  leg100: "LEG_100MM",
+};
+const KIND_LABELS: Partial<Record<MeshKind, string>> = {
+  hinge: "Hinge",
+  anoukKnob: "Knob",
+  anoukHandle: "Handle",
+};
+
+/**
+ * What a hardware mesh is, as the guide's fittings list names it. Undefined
+ * for drilling marks and screw heads, and for meshes no signature matches.
+ */
+export function fittingLabel(o: ThreeDsObject): string | undefined {
+  const kind = meshKind(o);
+  if (!kind) return undefined;
+  const partId = KIND_PARTS[kind];
+  return (partId && getCanonicalPart(partId)?.label) || KIND_LABELS[kind];
 }
 
 /** The fittings a mesh count can check: the same ids whichever source is used. */
@@ -146,6 +182,9 @@ export function countHardwareFittings(group: SplitGroup, simpleNames: string[] =
   if (n("shelfPin")) rows.push({ name: "SHELF PINS 5MM", qty: n("shelfPin") });
   if (n("hinge")) rows.push({ name: hingeAlias(group), qty: n("hinge") });
   if (n("antiTip")) rows.push({ name: "ANTI-TIP BRACKET (+ PLATE) (290.36.540 + 290.36.560)", qty: n("antiTip") });
+  if (n("lBracket")) rows.push({ name: "L BRACKET", qty: n("lBracket") });
+  // The hardware list counts each leg twice (the alias halves it again)
+  if (n("leg100")) rows.push({ name: "HAFELE PLASTIC LEG (VD) 100", qty: 2 * n("leg100") });
 
   for (const [kind, family] of [
     ["anoukKnob", "ANOUK KNOB"],

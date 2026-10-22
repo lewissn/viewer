@@ -46,6 +46,20 @@ export interface GuideOverrides {
   backFixedToCarcass?: boolean;
 }
 
+/**
+ * Where one fitting mesh sits, from the project's 3D DXF export. Kept beside
+ * the model rather than written into mesh names: a hardware mesh renamed
+ * after its panel would be taken for that panel.
+ */
+export interface FittingLocation {
+  /** Panel it is on or in, as PolyBoard names it, e.g. "Left Side" */
+  part: string;
+  /** Which face of the panel, e.g. "inside face", "underside", "bottom edge" */
+  face: string;
+  /** What it is, as the fittings list names it; absent for drilling marks and screw heads */
+  label?: string;
+}
+
 export interface CabinetInstance {
   cabinetId: string;
   cabinetName: string;
@@ -66,6 +80,11 @@ export interface CabinetInstance {
   erpParts: string[];
   /** Resolved fittings with quantities from ERP */
   erpFittings?: ResolvedFitting[];
+  /**
+   * Fitting meshes by their name in the model, when the cabinet was split
+   * with a 3D DXF: the guide shows each one with its panel.
+   */
+  fittingLocations?: Record<string, FittingLocation>;
   /** Optional per-cabinet guide overrides from admin */
   guideOverrides?: GuideOverrides;
 }

@@ -31,6 +31,7 @@
  */
 
 import type { ResolvedFitting } from "./fittings";
+import type { FittingLocation } from "./projects";
 
 /** Supabase Storage bucket holding imported models and textures. */
 export const PROJECT_FILES_BUCKET = "project-files";
@@ -63,6 +64,8 @@ export interface DetectedCabinet {
     parts: string[];
     fittings: ResolvedFitting[];
     warnings: string[];
+    /** Each fitting mesh's panel and face, when a 3D DXF gave them */
+    fittingLocations?: Record<string, FittingLocation>;
   };
   textures: ImportEntry[];
 }
