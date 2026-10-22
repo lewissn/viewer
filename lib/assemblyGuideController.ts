@@ -85,6 +85,9 @@ const DEFAULT_EXPLODE_OFFSET: [number, number, number] = [0, 0.5, 0.5];
  */
 const EXPLODE_RADIUS_FRACTION = 0.415;
 
+/** How far a flat fitting is lifted off the face it is drawn in (model units, mm) */
+const FACE_LIFT = 1.5;
+
 /** Explode distance used when the model's size cannot be measured */
 const FALLBACK_EXPLODE_DISTANCE = 480;
 
@@ -135,6 +138,11 @@ interface PartMesh {
   /** Door or drawer front this part is mounted on (handles, knobs) */
   attachedTo?: PartMesh;
   /**
+   * The viewer's edge outlines for this mesh. They are separate objects, so
+   * they are shown, hidden and moved along with it.
+   */
+  lines?: any[];
+  /**
    * Panel a fitting is fitted on, from the cabinet's fitting locations: the
    * fitting shows, moves and highlights with it.
    */
@@ -144,6 +152,8 @@ interface PartMesh {
 
 /** One line of a step's fittings list: fittings of one kind on one face of a panel */
 export interface StepFitting {
+  /** Unique within its step; pass to highlightStepFitting() */
+  id: string;
   /** What it is, e.g. "Rafix Cam" */
   label: string;
   quantity: number;
@@ -428,8 +438,17 @@ export class AssemblyGuideController {
       step.groupKeys.some((k) => (this.partGroups.get(k)?.length ?? 0) > 0)
     );
 
-    // Check the order against the model and repair what the rules missed
-    const planned = this.validateSteps(withParts, generated.explodeOffsets);
+    // Where the fittings say how a panel joins the ones already fitted, it
+    // arrives along that joint instead of its group's usual direction
+    // Check the order against the model and repair what the rules missed.
+    // Joints only count onto panels already fitted, so when the repair moves
+    // a step the directions are worked out again for the new order.
+    let planned = this.planWithJoints(withParts, generated.explodeOffsets);
+    const order = (list: GeneratedStep[]) => list.map((s) => s.groupKeys.join("+")).join("|");
+    if (order(planned) !== order(withParts)) {
+      this.computeExplodedPositionsDynamic(generated.explodeOffsets);
+      planned = this.planWithJoints(planned, generated.explodeOffsets);
+    }
 
     // Convert generated steps to AssemblyStep format
     this._activeSteps = [];
@@ -476,6 +495,15 @@ export class AssemblyGuideController {
         return;
       }
 
+      // Edge outlines sit in a model of their own, placed in world space
+      const linesOf = new Map<any, any[]>();
+      mainModel.EnumerateEdges?.((line: any) => {
+        const mi = line.userData?.originalMeshInstance;
+        if (!mi) return;
+        line.userData = { ...line.userData, assembledLinePos: line.position.clone() };
+        linesOf.set(mi, [...(linesOf.get(mi) ?? []), line]);
+      });
+
       mainModel.EnumerateMeshesAndLines((obj: any) => {
         if (!obj.isMesh) return;
 
@@ -502,6 +530,7 @@ export class AssemblyGuideController {
           },
           explodedPos: { x: 0, y: 0, z: 0 },
           drawerIndex,
+          lines: linesOf.get(mi),
         });
       });
 
@@ -1306,9 +1335,178 @@ export class AssemblyGuideController {
       part.carrier = carrier;
       part.groupKey = carrier.groupKey;
       part.drawerIndex = carrier.drawerIndex;
+      if (fb) this.liftOffFace(part, fb, carrier);
       placed++;
     }
     log(`Located fittings: ${placed} placed on their panels`);
+  }
+
+  /**
+   * Cams, pin holes and screw heads are drawn as flat discs exactly in the
+   * panel's face, so the face hides them (and any highlight) at random.
+   * Lift a flat fitting a hair off the face, away from the board's middle.
+   */
+  private liftOffFace(part: PartMesh, fb: { min: Vec3; max: Vec3 }, carrier: PartMesh) {
+    const AX = ["x", "y", "z"] as const;
+    const flat = AX.find((a) => fb.max[a] - fb.min[a] < 0.5);
+    const cb = this.getPartWorldBounds(carrier);
+    if (!flat || !cb) return;
+    const side = Math.sign((fb.min[flat] + fb.max[flat]) / 2 - (cb.min[flat] + cb.max[flat]) / 2);
+    if (!side) return;
+    // That direction in the mesh's own frame
+    const local = AXIS_DIRECTIONS.reduce((best, d) => {
+      const w = this.localToWorldDirection(part, d);
+      const bw = this.localToWorldDirection(part, best);
+      return w[flat] * side > bw[flat] * side ? d : best;
+    });
+    // From where the export put it, so re-running the guide (the editor
+    // does) doesn't lift it again
+    const userData = part.threeMesh.userData;
+    userData.unliftedPos ??= { ...part.assembledPos };
+    const a = userData.unliftedPos as Vec3;
+    part.assembledPos = { x: a.x + local.x * FACE_LIFT, y: a.y + local.y * FACE_LIFT, z: a.z + local.z * FACE_LIFT };
+    this.setPartPosition(part, part.assembledPos);
+  }
+
+  /** Per panel: the local direction it arrives along, from its joints (see jointDirections) */
+  private _jointDirections = new Map<PartMesh, Vec3>();
+
+  /** Point panels along their joints for this order, then validate it */
+  private planWithJoints(
+    steps: GeneratedStep[],
+    offsets: Record<string, [number, number, number]>
+  ): GeneratedStep[] {
+    this._jointDirections = this.jointDirections(steps, offsets);
+    for (const [part, d] of this._jointDirections) {
+      const [ox, oy, oz] = offsets[part.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
+      const dist = Math.hypot(ox, oy, oz) * this._explodeDistance;
+      const a = part.assembledPos;
+      part.explodedPos = { x: a.x + d.x * dist, y: a.y + d.y * dist, z: a.z + d.z * dist };
+    }
+    return this.validateSteps(steps, offsets);
+  }
+
+  /**
+   * The direction each panel really arrives along, from the fittings that
+   * join it to panels fitted in earlier steps (cabinets with fitting
+   * locations only).
+   *
+   * A fitting joins two panels when it sits on one panel's face (or in its
+   * edge, pointing into the other's face) within both panels' footprint, with
+   * the panels next to each other across that face. The panel being fitted
+   * then arrives along that face's normal, from its own side: a divider drops
+   * onto the bottom's cams, a top is pushed onto the dividers' pins rather
+   * than slid across them. Joints that pull both ways along an axis (a shelf
+   * between two sides) say nothing about that axis. Panels without clear
+   * evidence keep their group's direction; the step validator still re-points
+   * any path that is blocked.
+   *
+   * Returns local (parent-frame) unit directions for the panels to change.
+   */
+  private jointDirections(
+    steps: GeneratedStep[],
+    offsets: Record<string, [number, number, number]>
+  ): Map<PartMesh, Vec3> {
+    const out = new Map<PartMesh, Vec3>();
+    const located = this.allParts.filter(
+      (p) => p.carrier && p.location && !/hinge|handle|knob|leg/i.test(p.location.label ?? "")
+    );
+    if (!located.length) return out;
+
+    const stepOf = new Map<string, number>();
+    steps.forEach((s, i) => s.groupKeys.forEach((k) => stepOf.has(k) || stepOf.set(k, i)));
+    // Doors swing, drawers slide, loose shelves drop onto pins: their own rules apply
+    const ownRules = new Set([
+      ...(VALIDATION_OPTIONS.openableGroups ?? []),
+      ...(VALIDATION_OPTIONS.looseGroups ?? []),
+    ]);
+    const movable = (p: PartMesh) =>
+      !p.isFitting && !p.attachedTo && stepOf.has(p.groupKey) && !ownRules.has(p.groupKey);
+
+    type Box = { min: Vec3; max: Vec3 };
+    const AX = ["x", "y", "z"] as const;
+    const boxes = new Map<PartMesh, Box>();
+    for (const p of this.allParts) {
+      if (!movable(p)) continue;
+      const b = this.getPartWorldBounds(p);
+      if (b) boxes.set(p, b);
+    }
+    const thin = (b: Box) => AX.reduce((t, a) => (b.max[a] - b.min[a] < b.max[t] - b.min[t] ? a : t));
+    const mid = (b: Box, a: (typeof AX)[number]) => (b.min[a] + b.max[a]) / 2;
+
+    // Joint axes between pairs of panels, as "axis" -> count, keyed by panel pair
+    const pairAxes = new Map<PartMesh, Map<PartMesh, Map<string, number>>>();
+    const vote = (mover: PartMesh, other: PartMesh, key: string) => {
+      const byOther = pairAxes.get(mover) ?? new Map<PartMesh, Map<string, number>>();
+      const axes = byOther.get(other) ?? new Map<string, number>();
+      axes.set(key, (axes.get(key) ?? 0) + 1);
+      byOther.set(other, axes);
+      pairAxes.set(mover, byOther);
+    };
+
+    for (const f of located) {
+      const carrier = f.carrier!;
+      const cb = boxes.get(carrier);
+      const fb = this.getPartWorldBounds(f);
+      if (!cb || !fb) continue;
+      const fc = { x: mid(fb, "x"), y: mid(fb, "y"), z: mid(fb, "z") };
+      const onEdge = /edge/.test(f.location!.face);
+      for (const [other, ob] of boxes) {
+        if (other === carrier) continue;
+        // The panel whose face takes the joint: the carrier, unless the
+        // fitting is in the carrier's edge and points into the other's face
+        const a = thin(onEdge ? ob : cb);
+        const across = AX.filter((b) => b !== a);
+        const inBoth = across.every(
+          (b) =>
+            fc[b] >= Math.max(cb.min[b], ob.min[b]) - 2 && fc[b] <= Math.min(cb.max[b], ob.max[b]) + 2
+        );
+        const gap = Math.max(0, ob.min[a] - cb.max[a], cb.min[a] - ob.max[a]);
+        const reach = Math.max(0, ob.min[a] - fc[a], fc[a] - ob.max[a]);
+        if (!inBoth || gap > 30 || reach > 30) continue;
+        for (const [mover, fixed, mb, xb] of [
+          [other, carrier, ob, cb],
+          [carrier, other, cb, ob],
+        ] as const) {
+          // Only joints onto panels already in place when the mover arrives
+          if (stepOf.get(fixed.groupKey)! >= stepOf.get(mover.groupKey)!) continue;
+          const sign = Math.sign(mid(mb, a) - mid(xb, a));
+          if (sign) vote(mover, fixed, `${sign > 0 ? "+" : "-"}${a}`);
+        }
+      }
+    }
+
+    for (const [mover, byOther] of pairAxes) {
+      // One direction per panel it joins: the one most of their fittings give
+      const dirs = [...byOther.values()].map((axes) => [...axes].sort((p, q) => q[1] - p[1])[0][0]);
+      const axisSigns = new Map<string, Set<string>>();
+      for (const d of dirs) axisSigns.set(d.slice(1), (axisSigns.get(d.slice(1)) ?? new Set()).add(d[0]));
+      // An axis pulled both ways is closed off; the rest are candidates
+      const counts = new Map<string, number>();
+      for (const d of dirs) if (axisSigns.get(d.slice(1))!.size === 1) counts.set(d, (counts.get(d) ?? 0) + 1);
+      if (!counts.size) continue;
+
+      // Keep the group's own direction when the joints allow it
+      const [ox, oy, oz] = offsets[mover.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
+      const usual = this.localToWorldDirection(mover, { x: ox, y: oy, z: oz });
+      const ua = AX.reduce((t, a) => (Math.abs(usual[a]) > Math.abs(usual[t]) ? a : t));
+      if (counts.has(`${usual[ua] > 0 ? "+" : "-"}${ua}`)) continue;
+
+      const best = [...counts].sort((p, q) => q[1] - p[1])[0][0];
+      const world = { x: 0, y: 0, z: 0 };
+      world[best.slice(1) as (typeof AX)[number]] = best[0] === "+" ? 1 : -1;
+      // The local axis that points that way in the world
+      const local = AXIS_DIRECTIONS.reduce((bestDir, d) => {
+        const w = this.localToWorldDirection(mover, d);
+        const score = w.x * world.x + w.y * world.y + w.z * world.z;
+        const bw = this.localToWorldDirection(mover, bestDir);
+        return score > bw.x * world.x + bw.y * world.y + bw.z * world.z ? d : bestDir;
+      });
+      out.set(mover, local);
+      const joins = [...byOther].map(([o, axes]) => `${o.name} ${[...axes].map(([k, n]) => `${k}×${n}`).join(" ")}`);
+      log(`Joint path: "${mover.name}" arrives along ${best}, not its group's usual ${usual[ua] > 0 ? "+" : "-"}${ua} — joins ${joins.join("; ")}`);
+    }
+    return out;
   }
 
   // ── Step validation ──
@@ -1349,9 +1547,14 @@ export class AssemblyGuideController {
       const box = this.getPartWorldBounds(part);
       if (!box) return;
       const [ox, oy, oz] = offsets[part.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
-      const local = [{ x: ox, y: oy, z: oz }, ...AXIS_DIRECTIONS];
+      const reach = Math.hypot(ox, oy, oz);
+      const joint = this._jointDirections.get(part);
+      const first = joint
+        ? { x: joint.x * reach, y: joint.y * reach, z: joint.z * reach }
+        : { x: ox, y: oy, z: oz };
+      const local = [first, ...AXIS_DIRECTIONS];
       const id = String(i);
-      candidates.set(id, { part, local, reach: Math.hypot(ox, oy, oz) });
+      candidates.set(id, { part, local, reach });
       vParts.push({
         id,
         name: part.name,
@@ -1543,6 +1746,16 @@ export class AssemblyGuideController {
     part.threeMesh.position.x = pos.x;
     part.threeMesh.position.y = pos.y;
     part.threeMesh.position.z = pos.z;
+    if (!part.lines?.length) return;
+    // The outlines are in world space: move them by the same offset, turned
+    // from the mesh's parent frame into the world
+    const a = part.assembledPos;
+    const d = this.localToWorldDirection(part, { x: pos.x - a.x, y: pos.y - a.y, z: pos.z - a.z });
+    for (const line of part.lines) {
+      const home = line.userData?.assembledLinePos;
+      if (!home) continue;
+      line.position.set(home.x + d.x, home.y + d.y, home.z + d.z);
+    }
   }
 
   private applyExplodedToAll() {
@@ -1636,6 +1849,16 @@ export class AssemblyGuideController {
     }
   }
 
+  /**
+   * Re-frame what is on show, for when the space for the model changes (the
+   * wizard card grows, the window resizes). Ignored mid-animation: the step
+   * frames itself as it starts.
+   */
+  refit() {
+    if (this._isAnimating || !this.viewerEngine) return;
+    this.frameVisibleParts(false);
+  }
+
   // ── Part lookup ──
 
   /** First drawer index from drawer box parts (e.g. "[2]_1") */
@@ -1716,6 +1939,8 @@ export class AssemblyGuideController {
   /** Apply highlight to focus parts */
   applyHighlightDim(step: AssemblyStep) {
     try {
+      // A fitting shown through the panels on the last step goes back to normal
+      this.clearHighlight();
       const focusColor = new this.OV.RGBColor(0, 113, 227); // Apple blue
 
       if (this._dynamicMode) {
@@ -1753,6 +1978,8 @@ export class AssemblyGuideController {
   /** Clear all highlights */
   clearHighlight() {
     try {
+      for (const p of this._xray) p.threeMesh.renderOrder = 0;
+      this._xray = [];
       const transparent = new this.OV.RGBColor(0, 0, 0);
       this.viewerEngine.SetMeshesHighlight(transparent, () => false);
       this.renderViewer();
@@ -1765,6 +1992,7 @@ export class AssemblyGuideController {
 
   private setPartVisible(part: PartMesh, visible: boolean) {
     part.threeMesh.visible = visible;
+    for (const line of part.lines ?? []) line.visible = visible;
   }
 
   /** Index of last drawer step (insertAll) — drawers stay visible on and after this */
@@ -2182,6 +2410,7 @@ export class AssemblyGuideController {
   private _stepPartMeshes: Map<string, PartMesh[]>[] = [];
   /** Fittings per active step, from the cabinet's fitting locations */
   private _stepFittings: StepFitting[][] = [];
+  private _stepFittingMeshes: Map<string, PartMesh[]>[] = [];
   // Every mesh name carries the export's trailing index (see buildStepParts)
   private _namesIndexed = false;
 
@@ -2243,23 +2472,38 @@ export class AssemblyGuideController {
     this._stepParts = [];
     this._stepPartMeshes = [];
     this._stepFittings = [];
+    this._stepFittingMeshes = [];
     for (const step of this._activeSteps) {
       const all = this.getPartsForStep(step);
       let parts = all.filter((p) => !p.isFitting && !p.attachedTo);
 
       // Fittings going onto this step's panels, by kind, panel and face.
-      // Drilling marks and screw heads have no label and aren't listed.
-      const fittings = new Map<string, StepFitting>();
+      // Drilling marks and screw heads have no label and aren't listed. A
+      // hinge sits on the panel its plate is screwed to; the hinge itself
+      // comes back when the doors are hung.
+      const fittings = new Map<string, { line: StepFitting; meshes: PartMesh[] }>();
+      const add = (p: PartMesh, label: string, part: string, face: string) => {
+        const id = `${label}|${part}|${face}`;
+        const entry = fittings.get(id);
+        if (entry) {
+          entry.line.quantity++;
+          entry.meshes.push(p);
+        } else {
+          fittings.set(id, { line: { id, label, quantity: 1, part, face }, meshes: [p] });
+        }
+      };
       for (const p of all) {
         if (!p.carrier || !p.location?.label) continue;
-        const part = labelOf(p.carrier);
-        const { label, face } = p.location;
-        const key = `${label}|${part}|${face}`;
-        const line = fittings.get(key);
-        if (line) line.quantity++;
-        else fittings.set(key, { label, quantity: 1, part, face });
+        const hinge = p.location.label === "Hinge";
+        add(p, hinge ? "Hinge plate" : p.location.label, labelOf(p.carrier), p.location.face);
       }
-      this._stepFittings.push(Array.from(fittings.values()));
+      if (step.prefixes.includes("Door")) {
+        for (const p of this.allParts) {
+          if (p.carrier && p.location?.label === "Hinge") add(p, "Hinge", "Doors", "clip onto their plates");
+        }
+      }
+      this._stepFittings.push(Array.from(fittings.values(), (e) => e.line));
+      this._stepFittingMeshes.push(new Map(Array.from(fittings, ([id, e]) => [id, e.meshes])));
 
       if (step.drawerMode === "insertAll") {
         const fronts = parts.filter((p) => p.groupKey === "Drawer");
@@ -2314,12 +2558,37 @@ export class AssemblyGuideController {
   highlightStepPart(stepIndex: number, partId: string | null) {
     if (this._isAnimating) return;
     const meshes = partId ? this._stepPartMeshes[stepIndex]?.get(partId) : undefined;
+    this.highlightMeshes(meshes, [0, 113, 227]);
+  }
+
+  /**
+   * Highlight one line of a step's fittings list on the model, in amber so
+   * the small parts stand out from the blue panels; null clears it.
+   */
+  highlightStepFitting(stepIndex: number, fittingId: string | null) {
+    if (this._isAnimating) return;
+    const meshes = fittingId ? this._stepFittingMeshes[stepIndex]?.get(fittingId) : undefined;
+    // Many sit on a face turned away from the camera (a bottom's underside),
+    // so they show through the panels in front of them
+    this.highlightMeshes(meshes, [245, 158, 11], true);
+  }
+
+  /** Meshes drawn through everything in front of them, until the next highlight */
+  private _xray: PartMesh[] = [];
+
+  private highlightMeshes(
+    meshes: PartMesh[] | undefined,
+    [r, g, b]: [number, number, number],
+    xray = false
+  ) {
     if (!meshes) {
       this.clearHighlight();
       return;
     }
     try {
-      const focusColor = new this.OV.RGBColor(0, 113, 227);
+      for (const p of this._xray) p.threeMesh.renderOrder = 0;
+      this._xray = [];
+      const focusColor = new this.OV.RGBColor(r, g, b);
       const focus = new Set(
         meshes.map((p) => p.threeMesh.userData?.originalMeshInstance)
       );
@@ -2327,6 +2596,16 @@ export class AssemblyGuideController {
         const mi = userData?.originalMeshInstance;
         return mi ? focus.has(mi) : false;
       });
+      if (xray) {
+        // The highlight materials are the viewer's own copies, dropped when
+        // the highlight is cleared, so changing them leaves the model as it was
+        for (const p of meshes) {
+          const materials = Array.isArray(p.threeMesh.material) ? p.threeMesh.material : [p.threeMesh.material];
+          for (const m of materials) if (m) m.depthTest = false;
+          p.threeMesh.renderOrder = 10;
+        }
+        this._xray = meshes;
+      }
       this.renderViewer();
     } catch {
       // Non-critical

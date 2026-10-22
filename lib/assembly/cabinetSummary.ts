@@ -69,7 +69,11 @@ export function buildCabinetSummary(
   // ── Features ──
 
   const features: CabinetFeature[] = [];
+  const doorCount = count("Door");
 
+  if (doorCount > 0) {
+    features.push({ label: "Doors", count: doorCount });
+  }
   if (dividerCount > 0) {
     features.push({ label: "Vertical Divisions", count: dividerCount });
   }
@@ -105,6 +109,8 @@ export function buildCabinetSummary(
   minutes += Math.floor(fixedShelfCount / 4) * 10;
   if (fixedShelfCount > 0 && fixedShelfCount < 4) minutes += 10;
   if (hasDrawers) minutes += 15;
+  // Hanging and adjusting doors takes a few minutes each
+  minutes += doorCount * 3;
   if (hasFaceFrames) minutes += 10;
   if (overlayBottom) minutes += 10;
   if (overlayTop) minutes += 10;
