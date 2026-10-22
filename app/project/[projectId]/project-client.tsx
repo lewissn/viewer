@@ -436,10 +436,9 @@ export default function ProjectClient({ project }: Props) {
   const hasCabinet = !!activeCabinet?.modelFileUrl;
   const hasFittings = (activeCabinet?.erpFittings?.length ?? 0) > 0;
 
-  const isBackStep =
-    currentStepData != null &&
-    !isComplete &&
-    currentStepData.prefixes.includes("Back");
+  // The model lies on its front for the carcass; say so where that starts
+  const laysDown =
+    !!currentStepData?.faceDown && (stepIndex === 0 || !state.activeSteps[stepIndex - 1]?.faceDown);
 
   return (
     <div className="flex w-screen h-screen bg-[var(--background)] overflow-hidden transition-colors">
@@ -560,33 +559,6 @@ export default function ProjectClient({ project }: Props) {
             bottom: inset.bottom,
           }}
         />
-
-        {/* Square-check visual cue (back step only) */}
-        {isBackStep && wizardOpen && !loading && (
-          <div className="absolute inset-0 z-30 pointer-events-none">
-            <svg className="w-full h-full" preserveAspectRatio="none">
-              <line
-                x1="15%" y1="15%" x2="85%" y2="75%"
-                stroke="var(--accent)"
-                strokeWidth="1"
-                strokeDasharray="8 6"
-                opacity="0.25"
-              />
-              <line
-                x1="85%" y1="15%" x2="15%" y2="75%"
-                stroke="var(--accent)"
-                strokeWidth="1"
-                strokeDasharray="8 6"
-                opacity="0.25"
-              />
-              {/* Corner markers */}
-              <circle cx="15%" cy="15%" r="6" fill="var(--accent)" opacity="0.2" />
-              <circle cx="85%" cy="15%" r="6" fill="var(--accent)" opacity="0.2" />
-              <circle cx="15%" cy="75%" r="6" fill="var(--accent)" opacity="0.2" />
-              <circle cx="85%" cy="75%" r="6" fill="var(--accent)" opacity="0.2" />
-            </svg>
-          </div>
-        )}
 
         {/* Tapped-part info chip — shows name + dimensions of the last tapped part.
             Sits below the top bar so it doesn't fight with the bottom wizard.
@@ -781,14 +753,34 @@ export default function ProjectClient({ project }: Props) {
                     <p className="text-[12px] text-[var(--muted)] mb-1">
                       Step {stepIndex + 1} of {state.totalSteps}
                     </p>
+                    {currentStepData.standUp && (
+                      <StepCallout title="Stand the cabinet upright">
+                        With the back fitted, lift the cabinet onto its base before carrying on.
+                        Get a second pair of hands for anything large.
+                      </StepCallout>
+                    )}
                     <TermAwareText className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2 block">
                       {currentStepData.copy}
                     </TermAwareText>
+                    {laysDown && (
+                      <StepCallout title="Build it lying on its front">
+                        Lay the panels front-edge-down on a soft surface, as the model shows. The
+                        cabinet stays this way until the back is in.
+                      </StepCallout>
+                    )}
+                    {currentStepData.squareCheck && (
+                      <StepCallout title="Square the cabinet">
+                        Measure the two diagonals drawn on the model, corner to corner. Push the
+                        longer corner in until both match to within 2 mm, then fix the back.
+                      </StepCallout>
+                    )}
 
                     {/* Fittings going onto this step's panels, where known */}
                     {currentStepFittings.length > 0 && (
                       <StepFittingsList
                         fittings={currentStepFittings}
+                        open={partsOpen}
+                        onToggle={() => setPartsOpen((o) => !o)}
                         selectedId={selectedPartId?.startsWith("fitting:") ? selectedPartId.slice(8) : null}
                         onSelect={handleSelectFitting}
                         disabled={state.isAnimating}
@@ -979,27 +971,59 @@ function DrawerSubSteps() {
   );
 }
 
+/** A short note that changes how the customer handles the build at this step */
+function StepCallout({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-2 rounded-lg border-l-2 border-amber-500 bg-amber-500/10 px-3 py-2">
+      <p className="text-[12px] font-semibold text-[var(--foreground)]">{title}</p>
+      <p className="mt-0.5 text-[12px] leading-snug text-[var(--muted)]">{children}</p>
+    </div>
+  );
+}
+
 /**
  * Fittings for the step's panels: what, how many, and which face they go on.
  * Tapping a line shows those fittings on the model.
  */
 function StepFittingsList({
   fittings,
+  open,
+  onToggle,
   selectedId,
   onSelect,
   disabled,
 }: {
   fittings: StepFitting[];
+  open: boolean;
+  onToggle: () => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   disabled: boolean;
 }) {
+  const total = fittings.reduce((n, f) => n + f.quantity, 0);
   return (
     <div className="mb-2">
-      <p className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-0.5">
-        Fittings for this step
-      </p>
-      <ul className="-mx-1.5">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="step-fittings-list"
+        className="flex items-center gap-1.5 w-full py-1 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+      >
+        <svg
+          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+        <span className="font-medium">
+          {total === 1 ? "1 fitting" : `${total} fittings`} for this step
+        </span>
+      </button>
+      {open && (
+      <ul id="step-fittings-list" className="-mx-1.5">
         {fittings.map((f) => {
           const selected = f.id === selectedId;
           return (
@@ -1030,6 +1054,7 @@ function StepFittingsList({
           );
         })}
       </ul>
+      )}
     </div>
   );
 }

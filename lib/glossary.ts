@@ -139,7 +139,7 @@ const GLOSSARY: Record<string, GlossaryEntry> = {
   plinth: {
     label: "Plinth",
     description:
-      "The recessed base panel beneath a floor-standing cabinet. Sets the cabinet on its feet and conceals legs.",
+      "The recessed base panel beneath a floor-standing cabinet. It raises the cabinet off the floor and closes in the space below it.",
   },
   "vertical division": {
     label: "Vertical Division",

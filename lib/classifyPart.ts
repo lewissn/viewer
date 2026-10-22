@@ -160,6 +160,10 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
   Plinth: [0, -1.4, 0],
   Top: [0, 1, 0],
   "Vertical Division": [0, 1, 0],
+  // Split by geometry when shelves are trapped between dividers (never by
+  // name), so they move like the parent group
+  "Vertical Division - Centre": [0, 1, 0],
+  "Vertical Division - Outer": [0, 1, 0],
   "Left Side": [-1, 0, 0],
   "Right Side": [1, 0, 0],
   Back: [0, 0, 1.2],
@@ -240,7 +244,11 @@ export function generateGuideFromGroups(
     bottomOverlaysSides: overrides?.bottomOverlaysSides,
     topOverlaysSides: overrides?.topOverlaysSides,
     backFixedToCarcass: overrides?.backFixedToCarcass,
-    dividerCount: groupCounts?.["Vertical Division"],
+    dividerCount:
+      (groupCounts?.["Vertical Division"] ?? 0) +
+        (groupCounts?.["Vertical Division - Centre"] ?? 0) +
+        (groupCounts?.["Vertical Division - Outer"] ?? 0) || undefined,
+    centreDividerCount: groupCounts?.["Vertical Division - Centre"],
   });
 
   // Build explode offsets (defaults + overrides). A structural back is

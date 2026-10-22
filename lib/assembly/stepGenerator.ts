@@ -39,6 +39,8 @@ export interface CabinetFlags {
    * was supplied.
    */
   dividerCount?: number;
+  /** How many of those are centre dividers, when the controller split them */
+  centreDividerCount?: number;
   /**
    * Structural back: a full-thickness panel cammed onto the sides, top and
    * bottom (and screwed into any dividers) instead of a thin back slid into
@@ -119,7 +121,10 @@ export function generateSteps(
   const bottomOverlaysSides = flags.bottomOverlaysSides ?? false;
   const topOverlaysSides = flags.topOverlaysSides ?? false;
   const backFixedToCarcass = flags.backFixedToCarcass ?? false;
-  const hasDivider = has("Vertical Division");
+  // The controller splits the dividers into centre and outer when shelves are
+  // trapped between them, so the inner assembly is built out from the middle
+  const splitDividers = has("Vertical Division - Centre") && has("Vertical Division - Outer");
+  const hasDivider = has("Vertical Division") || splitDividers;
   const dividerCount = hasDivider ? Math.max(1, flags.dividerCount ?? 1) : 0;
   // "the divider" / "the 3 dividers"; the inner columns lie between two dividers
   const theDividers = dividerCount === 1 ? "the divider" : `the ${dividerCount} dividers`;
@@ -549,11 +554,11 @@ export function generateSteps(
 
     // Shelves between two dividers — the trapped ones. They go in while the
     // dividers are still loose and can be spread apart to take them.
-    const addCentreShelfStep = () => {
+    const addCentreShelfStep = (copy = "Connect the centre fixed shelves between the dividers.") => {
       if (!hasCentreShelf) return;
       addStep(
         ["Fixed Shelf - Centre"],
-        "Connect the centre fixed shelves between the dividers.",
+        copy,
         {
           usesFittings: true,
           helpers: [
@@ -563,8 +568,9 @@ export function generateSteps(
             },
             {
               title: "Before tightening",
-              content:
-                "Work with the dividers lying front-edge-down. Connect each shelf to one divider, then bring the second divider onto the shelf ends and lock the cams. Keep the assembly square as you go.",
+              content: splitDividers
+                ? "Keep the divider lying front-edge-down. Push each shelf onto its cams so it stands square to the divider, and lock the cams lightly — the other dividers go on next."
+                : "Work with the dividers lying front-edge-down. Connect each shelf to one divider, then bring the second divider onto the shelf ends and lock the cams. Keep the assembly square as you go.",
             },
             edgeBandingNote,
           ],
@@ -621,14 +627,65 @@ export function generateSteps(
       );
     };
 
+    // With the dividers split by the controller, the inner assembly grows out
+    // from the middle: centre divider, its shelves, then the other dividers
+    // onto the shelves' free ends. Divider face-frame pieces wait for the
+    // second step, when every divider is on the bench.
+    const addSplitDividerSteps = () => {
+      const centreCount = flags.centreDividerCount ?? 1;
+      const theCentre = centreCount === 1 ? "the centre divider" : `the ${centreCount} centre dividers`;
+      const outerCount = Math.max(1, dividerCount - centreCount);
+      const theOuter = outerCount === 1 ? "the other divider" : `the other ${outerCount} dividers`;
+      const orientation: StepHelper = {
+        title: "Divider orientation",
+        content:
+          "MDF dividers have a tenon (tongue) at the top and bottom — the flat side faces left unless your plans show otherwise. Pre-finished panels use Rafix cams only; check the label for orientation.",
+      };
+
+      addStep(["Vertical Division - Centre"], `Lay ${theCentre} front-edge-down to start the inner assembly.`, {
+        usesFittings: true,
+        helpers: [
+          {
+            title: "Why start here",
+            content: `${dividerCount} dividers make ${dividerCount + 1} columns, and the shelves in the ${innerColumns} are closed in on both sides once the dividers are joined. Building out from the middle means each shelf goes onto a divider that is already lying flat, and each new divider goes onto shelves that are already in.`,
+          },
+          orientation,
+        ],
+      });
+      addCentreShelfStep(`Connect the centre fixed shelves to ${theCentre}.`);
+      const outerKeys = dividerKeys.filter((k) => k !== "Vertical Division");
+      const hasFF = outerKeys.some((k) => k.startsWith("Face Frame"));
+      addStep(
+        ["Vertical Division - Outer", ...outerKeys],
+        hasFF
+          ? `Bring ${theOuter} onto the free ends of the centre shelves, with the dividers' face frame pieces attached.`
+          : `Bring ${theOuter} onto the free ends of the centre shelves.`,
+        {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Before tightening",
+              content:
+                "Keep everything front-edge-down. Locate every shelf end on its divider before locking any cams, then check the shelves are square to the dividers.",
+            },
+          ],
+        }
+      );
+    };
+
     if (assemblyFirst) {
       // Shelves are trapped between dividers, so the inner assembly is built
       // first and the surrounding panels are brought to it:
       //   dividers -> centre shelves -> outer shelves -> base -> top -> sides
+      // (centre divider -> centre shelves -> other dividers when split).
       // Each step attaches to something already on screen, and nothing has to
       // hang unsupported waiting for a later part.
-      addDividerStep();
-      addCentreShelfStep();
+      if (splitDividers) {
+        addSplitDividerSteps();
+      } else {
+        addDividerStep();
+        addCentreShelfStep();
+      }
       addOuterShelfStep();
       addBaseStep();
       addTopStep();
@@ -769,7 +826,9 @@ export function generateSteps(
             title: "Why this matters",
             content: backFixedToCarcass
               ? "On this unit, the top overlays the side panels, so it goes on once the sides are in place. The back is fitted after it to close the cabinet."
-              : "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place, but before the wall bar. Do not attempt to fit it earlier.",
+              : has("Rear Brace")
+                ? "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place, but before the wall bar. Do not attempt to fit it earlier."
+                : "On this unit, the top overlays the side panels and is fixed last — after the sides and back are in place. Do not attempt to fit it earlier.",
           },
           {
             title: "Before tightening",

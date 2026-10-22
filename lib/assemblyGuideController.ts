@@ -88,8 +88,77 @@ const EXPLODE_RADIUS_FRACTION = 0.415;
 /** How far a flat fitting is lifted off the face it is drawn in (model units, mm) */
 const FACE_LIFT = 1.5;
 
+/** How far the model tips forward to lie on its front edges (radians) */
+const FACE_DOWN = Math.PI / 2;
+
+/** Drawn Rafix pins: how far into the panel they are screwed, radius, roundness (mm) */
+const PIN_DEPTH = 12;
+const PIN_RADIUS = 3;
+const PIN_SEGMENTS = 12;
+
 /** Explode distance used when the model's size cannot be measured */
 const FALLBACK_EXPLODE_DISTANCE = 480;
+
+// ── Joint geometry (world-space boxes) ──
+
+type Box = { min: Vec3; max: Vec3 };
+const AXES = ["x", "y", "z"] as const;
+type Axis = (typeof AXES)[number];
+
+const thinAxis = (b: Box): Axis =>
+  AXES.reduce((t, a) => (b.max[a] - b.min[a] < b.max[t] - b.min[t] ? a : t));
+const boxMid = (b: Box, a: Axis) => (b.min[a] + b.max[a]) / 2;
+/** One panel sunk into the other: they overlap by more than a touch every way */
+const sunkInto = (p: Box, q: Box) =>
+  AXES.every((a) => Math.min(p.max[a], q.max[a]) - Math.max(p.min[a], q.min[a]) > 1.5);
+
+/**
+ * How a fitting at `fc` on the carrier panel (box `cb`) joins it to another
+ * panel (`ob`), if it does:
+ * - "face": through the face. The fitting sits on the carrier's face (or in
+ *   its edge, pointing into the other's face) within both panels' footprint,
+ *   the panels next to each other across that face — a divider's end on the
+ *   bottom's cams. They meet along that face's normal.
+ * - "edge": the classic Rafix joint. The cam is in the carrier's face just
+ *   inside an edge (`end` along `axis`), with the other panel's face across
+ *   that edge — an overlay top on the cams near a side's top edge. Not for a
+ *   panel sunk into the other: a back's edge meets the side all along its
+ *   groove, which is no joint.
+ */
+function fittingJoint(
+  fc: Vec3,
+  onEdge: boolean,
+  cb: Box,
+  ob: Box
+): { kind: "face" | "edge"; axis: Axis; end?: number } | null {
+  // The panel whose face takes the joint: the carrier, unless the fitting is
+  // in the carrier's edge and points into the other's face
+  const a = thinAxis(onEdge ? ob : cb);
+  const inBoth = AXES.filter((b) => b !== a).every(
+    (b) => fc[b] >= Math.max(cb.min[b], ob.min[b]) - 2 && fc[b] <= Math.min(cb.max[b], ob.max[b]) + 2
+  );
+  const gap = Math.max(0, ob.min[a] - cb.max[a], cb.min[a] - ob.max[a]);
+  const reach = Math.max(0, ob.min[a] - fc[a], fc[a] - ob.max[a]);
+  if (inBoth && gap <= 30 && reach <= 30) return { kind: "face", axis: a };
+
+  if (onEdge || sunkInto(cb, ob)) return null;
+  const t = thinAxis(cb);
+  for (const b of AXES.filter((x) => x !== t)) {
+    const atMax = cb.max[b] - fc[b] <= fc[b] - cb.min[b];
+    const end = atMax ? cb.max[b] : cb.min[b];
+    if (Math.abs(fc[b] - end) > 50) continue;
+    // The other panel starts at that edge (or a little into it) and carries on past it
+    const meets = atMax
+      ? ob.min[b] >= end - 25 && ob.min[b] <= end + 1 && ob.max[b] > end + 1
+      : ob.max[b] <= end + 25 && ob.max[b] >= end - 1 && ob.min[b] < end - 1;
+    const c = AXES.find((x) => x !== t && x !== b)!;
+    const covers =
+      ob.min[t] <= cb.min[t] + 1 && ob.max[t] >= cb.max[t] - 1 &&
+      fc[c] >= ob.min[c] - 2 && fc[c] <= ob.max[c] + 2;
+    if (meets && covers) return { kind: "edge", axis: b, end };
+  }
+  return null;
+}
 
 /** Fallback travel directions tried when a part's own path in is blocked */
 const AXIS_DIRECTIONS: Vec3[] = [
@@ -148,6 +217,8 @@ interface PartMesh {
    */
   carrier?: PartMesh;
   location?: FittingLocation;
+  /** Drawn by the guide (a cam's pin), not part of the exported model */
+  synthetic?: boolean;
 }
 
 /** One line of a step's fittings list: fittings of one kind on one face of a panel */
@@ -372,6 +443,10 @@ export class AssemblyGuideController {
     // Fittings with a known panel ride along with it (groups are final now)
     this.placeLocatedFittings(fittingLocations);
 
+    // PolyBoard draws the cams but not the pins they lock onto; add a pin to
+    // each cam joint, carried by the panel it is screwed into
+    this.addCamPins();
+
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
 
@@ -471,6 +546,10 @@ export class AssemblyGuideController {
 
     // Parts list per step, for the wizard
     this.buildStepParts();
+
+    // Lie the model front-edge-down while the carcass is built, as the
+    // customer does, and stand it up after the back
+    this.setupPose();
 
     console.log("[AssemblyGuide] Active steps:", this._activeSteps.length);
 
@@ -1072,11 +1151,44 @@ export class AssemblyGuideController {
 
     // No shelf is actually trapped between dividers — revert so the cabinet
     // keeps the ordinary single "Fixed Shelf" step.
-    if (!touched.some((p) => p.groupKey === "Fixed Shelf - Centre")) {
+    const centreShelves = touched.filter((p) => p.groupKey === "Fixed Shelf - Centre");
+    if (!centreShelves.length) {
       for (const p of touched) p.groupKey = "Fixed Shelf";
       log(
         "Fixed shelf refine: no shelves between dividers — keeping a single group"
       );
+      return;
+    }
+    this.refineDividerGroups(dividers, centreShelves, widthAxis);
+  }
+
+  /**
+   * Split the dividers when shelves are trapped between them, so the inner
+   * assembly is built outwards from the middle, the way it is done by hand:
+   * the divider(s) with trapped shelves on both sides first ("Vertical
+   * Division - Centre"), those shelves onto it, then the other dividers
+   * ("Vertical Division - Outer") onto the shelves' free ends, then the outer
+   * shelves. With two dividers neither has trapped shelves on both sides, so
+   * the one nearer the middle of the cabinet starts it.
+   */
+  private refineDividerGroups(dividers: PartMesh[], centreShelves: PartMesh[], axis: "x" | "y" | "z") {
+    const at = (p: PartMesh) => {
+      const b = this.getPartWorldBounds(p);
+      return b ? (b.min[axis] + b.max[axis]) / 2 : NaN;
+    };
+    const shelvesAt = centreShelves.map(at);
+    const sorted = [...dividers].sort((p, q) => at(p) - at(q));
+    let centre = sorted.filter(
+      (d) => shelvesAt.some((s) => s < at(d)) && shelvesAt.some((s) => s > at(d))
+    );
+    if (!centre.length) {
+      const middle = (at(sorted[0]) + at(sorted[sorted.length - 1])) / 2;
+      centre = [sorted.reduce((best, d) => (Math.abs(at(d) - middle) < Math.abs(at(best) - middle) ? d : best))];
+    }
+    if (centre.length === dividers.length) return;
+    for (const d of dividers) {
+      d.groupKey = centre.includes(d) ? "Vertical Division - Centre" : "Vertical Division - Outer";
+      log(`Divider refine: "${d.name}" ${axis}=${at(d).toFixed(1)} -> ${d.groupKey}`);
     }
   }
 
@@ -1368,6 +1480,327 @@ export class AssemblyGuideController {
     this.setPartPosition(part, part.assembledPos);
   }
 
+  // ── Pose: front-edge-down while building ──
+
+  /**
+   * The model's two roots (meshes, edge outlines) with their upright
+   * transforms, and the line the cabinet tips about: its front-bottom edge.
+   */
+  private _pose: { roots: { obj: any; base: any }[]; pivot: Vec3 } | null = null;
+  /** Current tip forward about the pivot, in radians (0 = upright) */
+  private _tilt = 0;
+  /** The square-check diagonals drawn on the back, shown on the back step */
+  private _diagonals: any = null;
+
+  /**
+   * The guide tells customers to build with the front edges on the floor and
+   * stand the cabinet up once the back is in. The model does the same: from
+   * the first carcass step to the back step it lies on its front, and moving
+   * on from the back stands it up. Cabinets without a back step stay upright.
+   */
+  private setupPose() {
+    this.setTilt(0);
+    this._diagonals?.parent?.remove?.(this._diagonals);
+    this._diagonals = null;
+    for (const s of this._activeSteps) {
+      s.faceDown = false;
+      s.standUp = false;
+      s.squareCheck = false;
+    }
+
+    const model = this.viewerEngine?.mainModel;
+    const roots = [model?.mainModel?.rootObject, model?.edgeModel?.rootObject].filter(
+      (r: any) => r?.matrix && r?.updateMatrix
+    );
+    const panels = this.allParts.filter((p) => !p.isFitting && !p.attachedTo);
+    const boxes = panels.map((p) => this.getPartWorldBounds(p)).filter((b): b is Box => b !== null);
+    if (!roots.length || !boxes.length) {
+      this._pose = null;
+      return;
+    }
+    const all = this.boundsOf(boxes);
+    // The front faces +z in the viewer (the export's depth runs to the rear)
+    const pivot = { x: (all.min.x + all.max.x) / 2, y: all.min.y, z: all.max.z };
+    this._pose = {
+      roots: roots.map((obj: any) => {
+        obj.updateMatrix();
+        return { obj, base: obj.matrix.clone() };
+      }),
+      pivot,
+    };
+
+    const back = this._activeSteps.map((s) => s.prefixes.includes("Back")).lastIndexOf(true);
+    const first = this._activeSteps.findIndex(
+      (s) => s.drawerMode !== "assembleFirst" && !s.prefixes.every((k) => DRAWER_GROUP_KEYS.has(k))
+    );
+    if (back >= 0 && first >= 0 && first <= back) {
+      for (let i = first; i <= back; i++) this._activeSteps[i].faceDown = true;
+      if (back + 1 < this._activeSteps.length) this._activeSteps[back + 1].standUp = true;
+    }
+    if (back >= 0) {
+      this._activeSteps[back].squareCheck = true;
+      this._diagonals = this.makeDiagonals();
+    }
+  }
+
+  private boundsOf(boxes: Box[]): Box {
+    const min = { x: Infinity, y: Infinity, z: Infinity };
+    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const b of boxes) {
+      for (const a of AXES) {
+        min[a] = Math.min(min[a], b.min[a]);
+        max[a] = Math.max(max[a], b.max[a]);
+      }
+    }
+    return { min, max };
+  }
+
+  /** The tip a step is shown at */
+  private tiltFor(stepIndex: number): number {
+    return this._activeSteps[stepIndex]?.faceDown ? FACE_DOWN : 0;
+  }
+
+  /**
+   * Tip the whole model about its front-bottom edge. Both roots turn
+   * together, so the edge outlines stay on their panels.
+   */
+  private setTilt(angle: number) {
+    if (!this._pose) {
+      this._tilt = 0;
+      return;
+    }
+    const { roots, pivot } = this._pose;
+    for (const { obj, base } of roots) {
+      const M = base.constructor;
+      const m = new M()
+        .makeTranslation(pivot.x, pivot.y, pivot.z)
+        .multiply(new M().makeRotationX(angle))
+        .multiply(new M().makeTranslation(-pivot.x, -pivot.y, -pivot.z))
+        .multiply(base);
+      m.decompose(obj.position, obj.quaternion, obj.scale);
+      obj.updateMatrixWorld(true);
+    }
+    this._tilt = angle;
+  }
+
+  /** Turn the model to a new tip over a moment, then re-frame it */
+  private animateTilt(to: number, duration = 900): Promise<void> {
+    const from = this._tilt;
+    if (!this._pose || from === to) return Promise.resolve();
+    return new Promise((resolve) => {
+      if (this.animationFrameId !== null) cancelAnimationFrame(this.animationFrameId);
+      const start = performance.now();
+      this._isAnimating = true;
+      this.notifyListeners();
+      const tick = (now: number) => {
+        const t = Math.min((now - start) / duration, 1);
+        this.setTilt(lerp(from, to, easeInOutCubic(t)));
+        this.renderViewer();
+        if (t < 1) {
+          this.animationFrameId = requestAnimationFrame(tick);
+          return;
+        }
+        this.animationFrameId = null;
+        this._isAnimating = false;
+        this.frameVisibleParts(true);
+        this.notifyListeners();
+        resolve();
+      };
+      this.animationFrameId = requestAnimationFrame(tick);
+    });
+  }
+
+  /**
+   * The two corner-to-corner diagonals across the back of the carcass, for
+   * squaring it: measured both ways, they should match. Drawn as lines over
+   * the model (made from the viewer's own classes, borrowed from an edge
+   * outline) beside the edge outlines, so they tip with the model.
+   */
+  private makeDiagonals(): any {
+    try {
+      const outline = this.allParts.find((p) => p.lines?.length)?.lines?.[0];
+      const root = this._pose?.roots[1]?.obj;
+      const panel = this.allParts.find((p) => !p.isFitting && p.threeMesh?.geometry);
+      if (!outline || !root || !panel) return null;
+      const carcassKeys = ["Left Side", "Right Side", "Top", "Bottom"];
+      const carcass = this.allParts
+        .filter((p) => !p.isFitting && carcassKeys.includes(p.groupKey))
+        .map((p) => this.getPartWorldBounds(p))
+        .filter((b): b is Box => b !== null);
+      if (carcass.length < 3) return null;
+      const box = this.boundsOf(carcass);
+      // Just behind the back, where the tape measure goes
+      const z = box.min.z - 2;
+      const corners = [
+        [box.min.x, box.min.y], [box.max.x, box.max.y],
+        [box.max.x, box.min.y], [box.min.x, box.max.y],
+      ].flatMap(([x, y]) => [x, y, z]);
+
+      const geometry = new panel.threeMesh.geometry.constructor();
+      const Attribute = panel.threeMesh.geometry.getAttribute("position").constructor;
+      geometry.setAttribute("position", new Attribute(new Float32Array(corners), 3));
+      const material = outline.material.clone();
+      material.color?.setRGB?.(0.96, 0.62, 0.04);
+      material.depthTest = false;
+      material.transparent = true;
+      material.opacity = 0.95;
+      const lines = new outline.constructor(geometry, material);
+      lines.renderOrder = 20;
+      lines.visible = false;
+      lines.userData = {};
+      root.add(lines);
+      return lines;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Show the square-check diagonals on their step only */
+  private showDiagonalsFor(stepIndex: number) {
+    if (this._diagonals) this._diagonals.visible = !!this._activeSteps[stepIndex]?.squareCheck;
+  }
+
+  /** Pin meshes this controller added to the scene (see addCamPins) */
+  private _pins: any[] = [];
+
+  private removeCamPins() {
+    for (const mesh of this._pins) mesh.parent?.remove?.(mesh);
+    this._pins = [];
+  }
+
+  /**
+   * Draw the Rafix pin for every cam joint. PolyBoard draws the cam housing
+   * but not the pin it locks onto, which leaves customers guessing what the
+   * cam grips. Each pin runs from the cam into the panel it is screwed into
+   * (the other panel of the joint, found as in jointDirections), and rides
+   * with that panel: it shows sticking out of the panel being fitted and
+   * slides into the cams already in place. Pins are listed with the step's
+   * fittings like any other.
+   */
+  private addCamPins() {
+    this.removeCamPins();
+    const cams = this.allParts.filter((p) => p.carrier && p.location?.label === "Rafix Cam");
+    if (!cams.length) return;
+
+    const boxes = new Map<PartMesh, Box>();
+    for (const p of this.allParts) {
+      if (p.isFitting || p.attachedTo) continue;
+      const b = this.getPartWorldBounds(p);
+      if (b) boxes.set(p, b);
+    }
+
+    let added = 0;
+    for (const cam of cams) {
+      const cb = boxes.get(cam.carrier!);
+      const fb = this.getPartWorldBounds(cam);
+      if (!cb || !fb) continue;
+      const fc = { x: boxMid(fb, "x"), y: boxMid(fb, "y"), z: boxMid(fb, "z") };
+      let joint: { other: PartMesh; ob: Box; kind: "face" | "edge"; axis: Axis } | null = null;
+      for (const [other, ob] of boxes) {
+        if (other === cam.carrier) continue;
+        const j = fittingJoint(fc, false, cb, ob);
+        if (j) {
+          joint = { other, ob, ...j };
+          break;
+        }
+      }
+      if (!joint) continue;
+      const { other, ob, kind, axis } = joint;
+
+      // From the cam, across into the other panel and 12mm into it. At an
+      // edge the pin runs through the middle of the carrier's thickness.
+      const toward = Math.sign(boxMid(ob, axis) - fc[axis]) || 1;
+      const start = { ...fc };
+      if (kind === "edge") {
+        const t = thinAxis(cb);
+        start[t] = boxMid(cb, t);
+      }
+      const end = { ...start };
+      end[axis] = (toward > 0 ? ob.min[axis] : ob.max[axis]) + toward * PIN_DEPTH;
+
+      const mesh = this.makePinMesh(cam, other, start, end);
+      if (!mesh) continue;
+      this._pins.push(mesh);
+
+      // Where it goes on the panel it is screwed into, in the same words as
+      // the export's fittings: into its edge for a joint through the face,
+      // into its face for a joint at the edge
+      const side = toward > 0 ? 0 : 1;
+      const words =
+        kind === "face"
+          ? { x: ["left edge", "right edge"], y: ["bottom edge", "top edge"], z: ["back edge", "front edge"] }[axis][side]
+          : { x: ["left face", "right face"], y: ["underside", "top face"], z: ["back face", "front face"] }[axis][side];
+      this.allParts.push({
+        threeMesh: mesh,
+        name: `Rafix Pin ${++added}`,
+        groupKey: other.groupKey,
+        assembledPos: { x: 0, y: 0, z: 0 },
+        explodedPos: { x: 0, y: 0, z: 0 },
+        drawerIndex: other.drawerIndex,
+        isFitting: true,
+        carrier: other,
+        location: { part: exportBaseName(other.name.trim()), face: words, label: "Rafix Pin" },
+        synthetic: true,
+      });
+    }
+    log(`Cam pins: ${added} added for ${cams.length} cams`);
+  }
+
+  /**
+   * A plain steel-grey cylinder between two world points, made with the
+   * viewer's own three.js classes (borrowed from a loaded mesh) and parented
+   * beside the panel it belongs to, so it moves in the same frame.
+   */
+  private makePinMesh(proto: PartMesh, owner: PartMesh, a: Vec3, b: Vec3): any {
+    try {
+      const parent = owner.threeMesh.parent;
+      const source = proto.threeMesh;
+      if (!parent?.matrixWorld || !source?.geometry) return null;
+      parent.updateMatrixWorld?.(true);
+      const inverse = parent.matrixWorld.clone().invert();
+      const V = source.position.constructor;
+      const pa = new V(a.x, a.y, a.z).applyMatrix4(inverse);
+      const pb = new V(b.x, b.y, b.z).applyMatrix4(inverse);
+      const along = pb.clone().sub(pa);
+      if (along.length() < 1) return null;
+      const dir = along.clone().normalize();
+      const helper = Math.abs(dir.x) < 0.9 ? new V(1, 0, 0) : new V(0, 1, 0);
+      const u = new V().crossVectors(dir, helper).normalize().multiplyScalar(PIN_RADIUS);
+      const v = new V().crossVectors(dir, u).normalize().multiplyScalar(PIN_RADIUS);
+
+      const ring = (centre: any) =>
+        Array.from({ length: PIN_SEGMENTS }, (_, i) => {
+          const t = (i / PIN_SEGMENTS) * Math.PI * 2;
+          return centre.clone().add(u.clone().multiplyScalar(Math.cos(t))).add(v.clone().multiplyScalar(Math.sin(t)));
+        });
+      const r0 = ring(pa);
+      const r1 = ring(pb);
+      const tri: number[] = [];
+      const put = (...ps: any[]) => ps.forEach((p) => tri.push(p.x, p.y, p.z));
+      for (let i = 0; i < PIN_SEGMENTS; i++) {
+        const j = (i + 1) % PIN_SEGMENTS;
+        put(r0[i], r1[i], r1[j], r0[i], r1[j], r0[j]); // side
+        put(pa, r0[j], r0[i], pb, r1[i], r1[j]); // caps
+      }
+
+      const geometry = new source.geometry.constructor();
+      const Attribute = source.geometry.getAttribute("position").constructor;
+      geometry.setAttribute("position", new Attribute(new Float32Array(tri), 3));
+      geometry.computeVertexNormals();
+      const base = Array.isArray(source.material) ? source.material[0] : source.material;
+      const material = base.clone();
+      material.map = null;
+      material.color?.setRGB?.(0.6, 0.62, 0.66);
+      const mesh = new source.constructor(geometry, material);
+      // A key of its own, so highlighting and tapping can tell pins apart
+      mesh.userData = { originalMeshInstance: { synthetic: "rafix-pin" }, threeMaterials: null };
+      parent.add(mesh);
+      return mesh;
+    } catch {
+      return null;
+    }
+  }
+
   /** Per panel: the local direction it arrives along, from its joints (see jointDirections) */
   private _jointDirections = new Map<PartMesh, Vec3>();
 
@@ -1387,19 +1820,29 @@ export class AssemblyGuideController {
   }
 
   /**
-   * The direction each panel really arrives along, from the fittings that
-   * join it to panels fitted in earlier steps (cabinets with fitting
-   * locations only).
+   * The direction each panel really arrives along, from how it meets the
+   * panels fitted in earlier steps.
    *
-   * A fitting joins two panels when it sits on one panel's face (or in its
-   * edge, pointing into the other's face) within both panels' footprint, with
-   * the panels next to each other across that face. The panel being fitted
-   * then arrives along that face's normal, from its own side: a divider drops
-   * onto the bottom's cams, a top is pushed onto the dividers' pins rather
-   * than slid across them. Joints that pull both ways along an axis (a shelf
-   * between two sides) say nothing about that axis. Panels without clear
-   * evidence keep their group's direction; the step validator still re-points
-   * any path that is blocked.
+   * Joints (cabinets with fitting locations): a fitting joins two panels
+   * - through a face: it sits on one panel's face (or in its edge, pointing
+   *   into the other's face) within both panels' footprint, with the panels
+   *   next to each other across that face — a divider drops onto the
+   *   bottom's cams along the bottom's normal;
+   * - at an edge: the classic Rafix joint, a cam in one panel's face just
+   *   inside an edge, with the other panel's face across that edge — an
+   *   overlay top is lowered onto the cams in the sides' faces.
+   * Joints that pull both ways along an axis (a shelf between two sides) say
+   * nothing about that axis; of the rest, the way most joined panels agree
+   * on wins.
+   *
+   * Housings (every cabinet): a panel sunk into one already fitted — a back
+   * in the sides' grooves, a tenon in a mortise — can only come in through
+   * the ends that panel leaves open, so the back slides down its grooves
+   * rather than being pushed in from behind.
+   *
+   * Ties go to the group's usual direction, then to "from above". Panels
+   * without evidence keep their group's direction; the step validator still
+   * re-points any path that is blocked.
    *
    * Returns local (parent-frame) unit directions for the panels to change.
    */
@@ -1409,9 +1852,8 @@ export class AssemblyGuideController {
   ): Map<PartMesh, Vec3> {
     const out = new Map<PartMesh, Vec3>();
     const located = this.allParts.filter(
-      (p) => p.carrier && p.location && !/hinge|handle|knob|leg/i.test(p.location.label ?? "")
+      (p) => p.carrier && p.location && !p.synthetic && !/hinge|handle|knob|leg/i.test(p.location.label ?? "")
     );
-    if (!located.length) return out;
 
     const stepOf = new Map<string, number>();
     steps.forEach((s, i) => s.groupKeys.forEach((k) => stepOf.has(k) || stepOf.set(k, i)));
@@ -1423,16 +1865,15 @@ export class AssemblyGuideController {
     const movable = (p: PartMesh) =>
       !p.isFitting && !p.attachedTo && stepOf.has(p.groupKey) && !ownRules.has(p.groupKey);
 
-    type Box = { min: Vec3; max: Vec3 };
-    const AX = ["x", "y", "z"] as const;
+    const AX = AXES;
     const boxes = new Map<PartMesh, Box>();
     for (const p of this.allParts) {
       if (!movable(p)) continue;
       const b = this.getPartWorldBounds(p);
       if (b) boxes.set(p, b);
     }
-    const thin = (b: Box) => AX.reduce((t, a) => (b.max[a] - b.min[a] < b.max[t] - b.min[t] ? a : t));
-    const mid = (b: Box, a: (typeof AX)[number]) => (b.min[a] + b.max[a]) / 2;
+    const mid = boxMid;
+    const sunk = sunkInto;
 
     // Joint axes between pairs of panels, as "axis" -> count, keyed by panel pair
     const pairAxes = new Map<PartMesh, Map<PartMesh, Map<string, number>>>();
@@ -1453,46 +1894,74 @@ export class AssemblyGuideController {
       const onEdge = /edge/.test(f.location!.face);
       for (const [other, ob] of boxes) {
         if (other === carrier) continue;
-        // The panel whose face takes the joint: the carrier, unless the
-        // fitting is in the carrier's edge and points into the other's face
-        const a = thin(onEdge ? ob : cb);
-        const across = AX.filter((b) => b !== a);
-        const inBoth = across.every(
-          (b) =>
-            fc[b] >= Math.max(cb.min[b], ob.min[b]) - 2 && fc[b] <= Math.min(cb.max[b], ob.max[b]) + 2
-        );
-        const gap = Math.max(0, ob.min[a] - cb.max[a], cb.min[a] - ob.max[a]);
-        const reach = Math.max(0, ob.min[a] - fc[a], fc[a] - ob.max[a]);
-        if (!inBoth || gap > 30 || reach > 30) continue;
+        const joint = fittingJoint(fc, onEdge, cb, ob);
+        if (!joint) continue;
+        const { axis } = joint;
         for (const [mover, fixed, mb, xb] of [
           [other, carrier, ob, cb],
           [carrier, other, cb, ob],
         ] as const) {
           // Only joints onto panels already in place when the mover arrives
           if (stepOf.get(fixed.groupKey)! >= stepOf.get(mover.groupKey)!) continue;
-          const sign = Math.sign(mid(mb, a) - mid(xb, a));
-          if (sign) vote(mover, fixed, `${sign > 0 ? "+" : "-"}${a}`);
+          const sign = Math.sign(mid(mb, axis) - mid(xb, axis));
+          if (sign) vote(mover, fixed, `${sign > 0 ? "+" : "-"}${axis}`);
         }
       }
     }
 
-    for (const [mover, byOther] of pairAxes) {
+    // Housings: a panel sunk into one already fitted (a back in the sides'
+    // grooves, a tenon in a mortise) can only come out of the ends that
+    // panel leaves open. Every housing has to allow the way in.
+    const allowedBy = new Map<PartMesh, Set<string>>();
+    for (const [mover, mb] of boxes) {
+      for (const [fixed, xb] of boxes) {
+        if (fixed === mover || stepOf.get(fixed.groupKey)! >= stepOf.get(mover.groupKey)!) continue;
+        if (!sunk(mb, xb)) continue;
+        const open = new Set<string>();
+        for (const a of AX) {
+          if (xb.max[a] <= mb.max[a] + 0.5) open.add(`+${a}`);
+          if (xb.min[a] >= mb.min[a] - 0.5) open.add(`-${a}`);
+        }
+        const before = allowedBy.get(mover);
+        allowedBy.set(mover, before ? new Set([...before].filter((d) => open.has(d))) : open);
+      }
+    }
+
+    for (const [mover] of boxes) {
+      const byOther = pairAxes.get(mover) ?? new Map<PartMesh, Map<string, number>>();
+      const allowed = allowedBy.get(mover);
+      if (!byOther.size && !allowed) continue;
+
       // One direction per panel it joins: the one most of their fittings give
       const dirs = [...byOther.values()].map((axes) => [...axes].sort((p, q) => q[1] - p[1])[0][0]);
       const axisSigns = new Map<string, Set<string>>();
       for (const d of dirs) axisSigns.set(d.slice(1), (axisSigns.get(d.slice(1)) ?? new Set()).add(d[0]));
-      // An axis pulled both ways is closed off; the rest are candidates
+      // An axis pulled both ways is closed off; the rest are candidates, as
+      // far as the housings let them be
       const counts = new Map<string, number>();
-      for (const d of dirs) if (axisSigns.get(d.slice(1))!.size === 1) counts.set(d, (counts.get(d) ?? 0) + 1);
-      if (!counts.size) continue;
+      for (const d of dirs) {
+        if (axisSigns.get(d.slice(1))!.size === 1 && (!allowed || allowed.has(d))) {
+          counts.set(d, (counts.get(d) ?? 0) + 1);
+        }
+      }
 
-      // Keep the group's own direction when the joints allow it
       const [ox, oy, oz] = offsets[mover.groupKey] ?? DEFAULT_EXPLODE_OFFSET;
-      const usual = this.localToWorldDirection(mover, { x: ox, y: oy, z: oz });
-      const ua = AX.reduce((t, a) => (Math.abs(usual[a]) > Math.abs(usual[t]) ? a : t));
-      if (counts.has(`${usual[ua] > 0 ? "+" : "-"}${ua}`)) continue;
+      const usualWorld = this.localToWorldDirection(mover, { x: ox, y: oy, z: oz });
+      const ua = AX.reduce((t, a) => (Math.abs(usualWorld[a]) > Math.abs(usualWorld[t]) ? a : t));
+      const usual = `${usualWorld[ua] > 0 ? "+" : "-"}${ua}`;
 
-      const best = [...counts].sort((p, q) => q[1] - p[1])[0][0];
+      // Most joined panels win; on a tie the group's usual way, then from
+      // above. With no joints to go on, a housing still sets the way in.
+      const pick = (options: string[]) =>
+        options.includes(usual) ? usual : options.includes("+y") ? "+y" : options[0];
+      let best: string | undefined;
+      if (counts.size) {
+        const most = Math.max(...counts.values());
+        best = pick([...counts].filter(([, n]) => n === most).map(([d]) => d));
+      } else if (allowed?.size) {
+        best = pick([...allowed]);
+      }
+      if (!best || best === usual) continue;
       const world = { x: 0, y: 0, z: 0 };
       world[best.slice(1) as (typeof AX)[number]] = best[0] === "+" ? 1 : -1;
       // The local axis that points that way in the world
@@ -1504,7 +1973,11 @@ export class AssemblyGuideController {
       });
       out.set(mover, local);
       const joins = [...byOther].map(([o, axes]) => `${o.name} ${[...axes].map(([k, n]) => `${k}×${n}`).join(" ")}`);
-      log(`Joint path: "${mover.name}" arrives along ${best}, not its group's usual ${usual[ua] > 0 ? "+" : "-"}${ua} — joins ${joins.join("; ")}`);
+      log(
+        `Joint path: "${mover.name}" arrives along ${best}, not its group's usual ${usual}` +
+          (joins.length ? ` — joins ${joins.join("; ")}` : "") +
+          (allowed ? ` — housed, open ${[...allowed].join(" ") || "nowhere"}` : "")
+      );
     }
     return out;
   }
@@ -1750,7 +2223,11 @@ export class AssemblyGuideController {
     // The outlines are in world space: move them by the same offset, turned
     // from the mesh's parent frame into the world
     const a = part.assembledPos;
-    const d = this.localToWorldDirection(part, { x: pos.x - a.x, y: pos.y - a.y, z: pos.z - a.z });
+    const w = this.localToWorldDirection(part, { x: pos.x - a.x, y: pos.y - a.y, z: pos.z - a.z });
+    // The outlines' root tips with the model, so take the tip back out
+    const c = Math.cos(this._tilt);
+    const s = Math.sin(this._tilt);
+    const d = { x: w.x, y: w.y * c + w.z * s, z: -w.y * s + w.z * c };
     for (const line of part.lines) {
       const home = line.userData?.assembledLinePos;
       if (!home) continue;
@@ -2228,14 +2705,20 @@ export class AssemblyGuideController {
     const nextStep = this._currentStep + 1;
 
     if (nextStep >= this._activeSteps.length) {
+      await this.animateTilt(0);
       this._currentStep = this._activeSteps.length;
       this.clearHighlight();
       this.showAllParts();
+      this.showDiagonalsFor(-1);
       // Frame the whole completed cabinet.
       this.frameVisibleParts(true);
       this.notifyListeners();
       return;
     }
+
+    // Lay the model down for the carcass (the finished cabinet tips onto its
+    // front before it comes apart), or stand it up once the back is in
+    await this.animateTilt(this.tiltFor(nextStep));
 
     if (this._currentStep === -1) {
       this.applyExplodedToAll();
@@ -2260,6 +2743,7 @@ export class AssemblyGuideController {
           : undefined,
       currentStepIndex: nextStep,
     });
+    this.showDiagonalsFor(nextStep);
 
     // Re-frame to the active build region before animating in the new parts.
     this.frameVisibleParts(true);
@@ -2286,6 +2770,8 @@ export class AssemblyGuideController {
     if (this._currentStep <= 0) {
       this._currentStep = -1;
       this._assembledKeys.clear();
+      this.setTilt(0);
+      this.showDiagonalsFor(-1);
       for (const part of this.allParts) {
         this.applyAssembledToPart(part);
       }
@@ -2314,6 +2800,7 @@ export class AssemblyGuideController {
 
     this._currentStep = targetStep;
     const targetStepData = this._activeSteps[targetStep];
+    this.setTilt(this.tiltFor(targetStep));
     this.applyVisibility(targetStepData.prefixes, {
       drawerMode: targetStepData.drawerMode,
       currentPartNames:
@@ -2322,6 +2809,7 @@ export class AssemblyGuideController {
           : undefined,
       currentStepIndex: targetStep,
     });
+    this.showDiagonalsFor(targetStep);
     this.frameVisibleParts(true);
     this.renderViewer();
     this.notifyListeners();
@@ -2331,6 +2819,8 @@ export class AssemblyGuideController {
     if (this._isAnimating) return;
     this._currentStep = -1;
     this._assembledKeys.clear();
+    this.setTilt(0);
+    this.showDiagonalsFor(-1);
     for (const part of this.allParts) {
       this.applyAssembledToPart(part);
     }
@@ -2374,6 +2864,7 @@ export class AssemblyGuideController {
 
     this._currentStep = targetStep;
     const targetStepData = this._activeSteps[targetStep];
+    this.setTilt(this.tiltFor(targetStep));
     this.applyHighlightDim(targetStepData);
     this.applyVisibility(targetStepData.prefixes, {
       drawerMode: targetStepData.drawerMode,
@@ -2383,6 +2874,7 @@ export class AssemblyGuideController {
           : undefined,
       currentStepIndex: targetStep,
     });
+    this.showDiagonalsFor(targetStep);
     this.frameVisibleParts(false);
     this.renderViewer();
     this.notifyListeners();
@@ -2395,6 +2887,8 @@ export class AssemblyGuideController {
     }
     this._isAnimating = false;
 
+    this.setTilt(0);
+    this.showDiagonalsFor(-1);
     for (const part of this.allParts) {
       this.applyAssembledToPart(part);
     }
@@ -2463,7 +2957,10 @@ export class AssemblyGuideController {
     // "Door 1 (Double) [1] 9"); the board label is the name without it. Only
     // strip when every name carries a distinct index, so a model whose names
     // are already the labels keeps e.g. "Plinth 1" whole.
-    const indices = this.allParts.map((p) => /\s(\d+)$/.exec(p.name.trim())?.[1]);
+    // (The guide's own drawn pins aren't in the export's numbering)
+    const indices = this.allParts
+      .filter((p) => !p.synthetic)
+      .map((p) => /\s(\d+)$/.exec(p.name.trim())?.[1]);
     this._namesIndexed =
       indices.every((i) => i !== undefined) &&
       new Set(indices).size === indices.length;
@@ -2692,6 +3189,7 @@ export class AssemblyGuideController {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
     }
+    this.removeCamPins();
     this.listeners = [];
   }
 }
