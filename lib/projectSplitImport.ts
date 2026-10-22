@@ -6,6 +6,11 @@
  * (re-origined like PolyBoard's), the textures it uses, its part names and
  * fittings. Nothing about the guide changes — it is still built from the
  * mesh names in the cabinet's model.
+ *
+ * With the project's 3D DXF export beside the .3ds, the cabinets, their
+ * PolyBoard names and which fitting belongs to which cabinet come from the
+ * DXF; without it (or when it doesn't line up with the .3ds) they are worked
+ * out from how PolyBoard writes the .3ds.
  */
 
 import { materialTextures, read3ds, write3ds, type ThreeDsFile } from "./threeDs";
@@ -16,10 +21,13 @@ import {
   groupObjects,
   groupOffset,
   splitProject,
+  splitProjectByDxf,
   type GroupDimensions,
   type GroupKind,
+  type ProjectSplit,
   type SplitGroup,
 } from "./splitProject";
+import { readPolyboardDxf } from "./polyboardDxf";
 import { assignFittings, parseHardwareList, type FittingsSource, type HardwareBlock } from "./hardwareFittings";
 import { classifyPart } from "./classifyPart";
 import type { DetectedCabinet, ImportEntry, ProjectModelSource } from "./importFolder";
@@ -31,7 +39,10 @@ export interface SplitCandidate {
   /** Stable id for review-screen state */
   key: string;
   kind: GroupKind;
-  /** Starting name, e.g. "Base unit · 1393 wide · 3 doors · 2 dividers" */
+  /**
+   * Starting name: the PolyBoard cabinet name ("980 DOUBLE") when a 3D DXF
+   * gave one, else a description, e.g. "Base unit · 1393 wide · 3 doors · 2 dividers"
+   */
   suggestedName: string;
   dims: GroupDimensions;
   panelCount: number;
@@ -93,11 +104,17 @@ function describeGap(ms: number): string {
 }
 
 export function staleMessage(s: StaleModel): string {
+  const what = /\.dxf$/i.test(s.modelPath) ? "3D DXF" : ".3ds";
   return (
     `${fileName(s.projectPath)} was saved ${describeGap(s.newerBy)} after ${fileName(s.modelPath)} ` +
-    `was exported, so the model may not match the final design. Re-export the project .3ds from ` +
+    `was exported, so the model may not match the final design. Re-export the project ${what} from ` +
     `PolyBoard and import again.`
   );
+}
+
+/** PolyBoard writes DXF in the Windows ANSI code page, not UTF-8. */
+async function readDxfText(entry: ImportEntry): Promise<string> {
+  return new TextDecoder("windows-1252").decode(await entry.data.arrayBuffer());
 }
 
 /**
@@ -111,14 +128,16 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
   for (const [m, source] of sources.entries()) {
     const modelName = fileName(source.model.path);
 
-    const modelTime = source.model.lastModified;
     const projectTime = source.projectFile?.lastModified;
-    if (source.projectFile && modelTime && projectTime && projectTime - modelTime > STALE_AFTER_MS) {
-      stale.push({
-        modelPath: source.model.path,
-        projectPath: source.projectFile.path,
-        newerBy: projectTime - modelTime,
-      });
+    for (const exported of [source.model, source.dxf]) {
+      const modelTime = exported?.lastModified;
+      if (source.projectFile && exported && modelTime && projectTime && projectTime - modelTime > STALE_AFTER_MS) {
+        stale.push({
+          modelPath: exported.path,
+          projectPath: source.projectFile.path,
+          newerBy: projectTime - modelTime,
+        });
+      }
     }
 
     let file: ThreeDsFile;
@@ -129,7 +148,23 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
       continue;
     }
 
-    const split = splitProject(file.objects);
+    let split: ProjectSplit | null = null;
+    if (source.dxf) {
+      const dxfName = fileName(source.dxf.path);
+      try {
+        split = splitProjectByDxf(file.objects, readPolyboardDxf(await readDxfText(source.dxf)));
+        if (!split) {
+          warnings.push(
+            `${dxfName} doesn't line up with ${modelName} — they look like exports of different ` +
+              `revisions — so cabinets were worked out from the model alone. Export both again from ` +
+              `the final project to get PolyBoard's cabinet names.`
+          );
+        }
+      } catch (err) {
+        warnings.push(`${dxfName}: ${err instanceof Error ? err.message : "could not be read."}`);
+      }
+    }
+    split ??= splitProject(file.objects);
     for (const w of split.warnings) warnings.push(`${modelName}: ${w}`);
 
     const blocks: HardwareBlock[] = [];
@@ -144,7 +179,7 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
       candidates.push({
         key: `${m}:${g}`,
         kind: group.kind,
-        suggestedName: describeGroup(group),
+        suggestedName: group.name ?? describeGroup(group),
         dims: groupDimensions(group),
         panelCount: group.panels.length,
         hardwareCount: group.hardware.length,

@@ -23,6 +23,7 @@
 
 import type { ThreeDsObject, Vec3 } from "./threeDs";
 import { classifyPart, extractDrawerIndex } from "./classifyPart";
+import { matchThreeDsObjects, type DxfLeaf, type DxfStructure } from "./polyboardDxf";
 
 export type GroupKind = "cabinet" | "loose" | "accessories";
 
@@ -46,6 +47,8 @@ export interface SplitGroup {
   segment: number;
   copy: number;
   copies: number;
+  /** The cabinet's PolyBoard name, when a 3D DXF export supplied it */
+  name?: string;
 }
 
 export interface ProjectSplit {
@@ -372,6 +375,58 @@ export function splitProject(objects: ThreeDsObject[]): ProjectSplit {
   }
 
   return { groups, room, panelCount: panels.length, hardwareCount: hardware.length, warnings };
+}
+
+/**
+ * Split by PolyBoard's own 3D DXF export of the same project instead of
+ * guessing: the DXF names every solid's cabinet and part, and says whether it
+ * is a panel or a fitting (see polyboardDxf.ts).
+ *
+ * Returns null unless every DXF solid matches a .3ds object and every .3ds
+ * object other than the room floor matches a solid — anything less means the
+ * two were exported at different revisions, and the guessing split is safer
+ * than a partial one.
+ */
+export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): ProjectSplit | null {
+  const matches = matchThreeDsObjects(objects, dxf.leaves);
+  const leafOf = new Map<ThreeDsObject, DxfLeaf>();
+  const room: ThreeDsObject[] = [];
+  objects.forEach((o, n) => {
+    const leaf = matches[n].leaf;
+    if (leaf) leafOf.set(o, leaf);
+    else room.push(o);
+  });
+  if (leafOf.size !== dxf.leaves.length || !room.every(isRoomFloor)) return null;
+
+  const names = [...new Set(dxf.cabinets.map((c) => c.name))];
+  const groups: SplitGroup[] = [];
+  for (const cab of dxf.cabinets) {
+    const own = objects.filter((o) => {
+      const leaf = leafOf.get(o);
+      return leaf?.cabinet === cab.name && leaf.copy === cab.copy;
+    });
+    if (own.length === 0) continue;
+    const panels = own.filter((o) => leafOf.get(o)!.kind === "panel");
+    const hardware = own.filter((o) => leafOf.get(o)!.kind === "fitting");
+    const kind: GroupKind = isCarcass(panels) ? "cabinet" : "loose";
+    groups.push({
+      kind,
+      panels,
+      hardware,
+      box: unionBox(kind === "cabinet" ? panels.filter(isCarcassPanel) : panels.length ? panels : own),
+      segment: names.indexOf(cab.name),
+      copy: cab.copy,
+      copies: dxf.cabinets.filter((c) => c.name === cab.name).length,
+      name: cab.name,
+    });
+  }
+
+  const warnings = [...dxf.warnings];
+  if (!groups.some((g) => g.kind === "cabinet")) {
+    warnings.push("No cabinet carcass (sides plus top or bottom) was found in the project model.");
+  }
+  const panelCount = groups.reduce((n, g) => n + g.panels.length, 0);
+  return { groups, room, panelCount, hardwareCount: objects.length - room.length - panelCount, warnings };
 }
 
 /**

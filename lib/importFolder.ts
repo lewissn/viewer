@@ -13,15 +13,21 @@
  *     TDB LHS/MDFN.jpg     <- textures, folder shares the stem
  *     TDB RHS.3ds / .CSV / TDB RHS/
  *     Sarah Culloty - 11569.3ds    <- whole-project model, no CSV
+ *     Sarah Culloty - 11569.dxf    <- PolyBoard 3D DXF export of the same project
+ *     Sarah Culloty - 11569.csv    <- project cabinet list, not a cabinet's parts
+ *     Sarah Culloty - 11569.pb-proj
  *     Sarah Culloty - 11569.txt    <- project hardware list
  *     Measured Plans.pdf
  *
  * A cabinet is a CSV plus a model sharing its stem. Most orders have no such
  * pairs, only the whole-project .3ds; that is returned as a project model to
- * be split into cabinets (see projectSplitImport.ts), together with the
- * .pb-proj (to tell whether the model is out of date) and the hardware list
- * (for fittings). Everything else (PDFs and the like) is skipped and reported
- * so it is clear what was ignored and why.
+ * be split into cabinets (see projectSplitImport.ts), together with the 3D
+ * DXF (which says which cabinet and part every mesh belongs to), the .pb-proj
+ * (to tell whether the model is out of date) and the hardware list (for
+ * fittings). A CSV sharing its stem with the .pb-proj or DXF is PolyBoard's
+ * cabinet list for the whole project, so it never makes the project model
+ * look like a single cabinet. Everything else (PDFs and the like) is skipped
+ * and reported so it is clear what was ignored and why.
  */
 
 import type { ResolvedFitting } from "./fittings";
@@ -71,6 +77,8 @@ export interface ProjectModelSource {
   textures: ImportEntry[];
   /** The PolyBoard project the model was exported from */
   projectFile?: ImportEntry;
+  /** PolyBoard 3D DXF export of the same project, naming each mesh's cabinet and part */
+  dxf?: ImportEntry;
   /** PolyBoard hardware lists that may hold per-cabinet fittings */
   hardwareLists: ImportEntry[];
 }
@@ -201,6 +209,7 @@ export function detectProject(
   const csvs: ImportEntry[] = [];
   const textures: ImportEntry[] = [];
   const projectFiles: ImportEntry[] = [];
+  const dxfFiles: ImportEntry[] = [];
   const textFiles: ImportEntry[] = [];
   const others: ImportEntry[] = [];
 
@@ -224,6 +233,8 @@ export function detectProject(
       textures.push(entry);
     } else if (ext === "pb-proj") {
       projectFiles.push(entry);
+    } else if (ext === "dxf") {
+      dxfFiles.push(entry);
     } else if (ext === "txt") {
       textFiles.push(entry);
     } else {
@@ -245,10 +256,20 @@ export function detectProject(
   const codeCounts = new Map<string, number>();
 
   const sortedCsvs = [...csvs].sort((a, b) => a.path.localeCompare(b.path));
+  const projectStems = new Set(
+    [...projectFiles, ...dxfFiles].map((e) => `${dirOf(e.path)}/${stemOf(e.path)}`.toLowerCase())
+  );
 
   for (const csv of sortedCsvs) {
     const dir = dirOf(csv.path);
     const stem = stemOf(csv.path);
+    if (projectStems.has(`${dir}/${stem}`.toLowerCase())) {
+      skipped.push({
+        path: csv.path,
+        reason: "PolyBoard's cabinet list for the whole project, not one cabinet's parts.",
+      });
+      continue;
+    }
     const model = modelsByKey.get(`${dir}/${stem}`.toLowerCase());
 
     if (!model) {
@@ -315,9 +336,10 @@ export function detectProject(
       });
       continue;
     }
-    const source = projectModelSource(model, textures, projectFiles, textFiles);
+    const source = projectModelSource(model, textures, projectFiles, dxfFiles, textFiles);
     for (const e of [...source.textures, ...source.hardwareLists]) usedSupport.add(e);
     if (source.projectFile) usedSupport.add(source.projectFile);
+    if (source.dxf) usedSupport.add(source.dxf);
     projectModels.push(source);
   }
 
@@ -329,7 +351,7 @@ export function detectProject(
       reason: "Not in any cabinet's texture folder.",
     });
   }
-  for (const entry of [...projectFiles, ...textFiles]) {
+  for (const entry of [...projectFiles, ...dxfFiles, ...textFiles]) {
     if (usedSupport.has(entry)) continue;
     skipped.push({ path: entry.path, reason: "Not next to a project model." });
   }
@@ -357,7 +379,8 @@ export function detectProject(
 /**
  * Gather what goes with a project model "<dir>/<stem>.3ds":
  * - textures from "<dir>/<stem>/", else loose in <dir>, else anywhere;
- * - "<dir>/<stem>.pb-proj", else the only .pb-proj in <dir>;
+ * - "<dir>/<stem>.pb-proj", else the only .pb-proj in <dir>; the same for
+ *   the 3D DXF;
  * - hardware lists named "<stem>*.txt" in <dir> or kept in the texture
  *   folder, else every .txt in <dir> (the list's name sometimes carries a
  *   different order number than the model's).
@@ -366,6 +389,7 @@ function projectModelSource(
   model: ImportEntry,
   textures: ImportEntry[],
   projectFiles: ImportEntry[],
+  dxfFiles: ImportEntry[],
   textFiles: ImportEntry[]
 ): ProjectModelSource {
   const dir = dirOf(model.path);
@@ -378,17 +402,22 @@ function projectModelSource(
   if (modelTextures.length === 0) modelTextures = textures.filter(inDir);
   if (modelTextures.length === 0) modelTextures = textures;
 
-  const projectsHere = projectFiles.filter(inDir);
-  const projectFile =
-    projectsHere.find((p) => stemOf(p.path).toLowerCase() === stem) ??
-    (projectsHere.length === 1 ? projectsHere[0] : undefined);
+  const sameStemOrOnly = (files: ImportEntry[]) => {
+    const here = files.filter(inDir);
+    return (
+      here.find((p) => stemOf(p.path).toLowerCase() === stem) ??
+      (here.length === 1 ? here[0] : undefined)
+    );
+  };
+  const projectFile = sameStemOrOnly(projectFiles);
+  const dxf = sameStemOrOnly(dxfFiles);
 
   let hardwareLists = textFiles.filter(
     (t) => inStemFolder(t) || (inDir(t) && stemOf(t.path).toLowerCase().startsWith(stem))
   );
   if (hardwareLists.length === 0) hardwareLists = textFiles.filter(inDir);
 
-  return { model, textures: modelTextures, projectFile, hardwareLists };
+  return { model, textures: modelTextures, projectFile, dxf, hardwareLists };
 }
 
 /**
