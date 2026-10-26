@@ -30,6 +30,8 @@ export interface AssemblyStep {
   standUp?: boolean;
   /** Set by the guide: the step squares the carcass, with its diagonals drawn on the model */
   squareCheck?: boolean;
+  /** Set by the guide: the opening step that fits each face-frame piece to its panel */
+  faceFrames?: boolean;
 }
 
 export interface ExplodeConfig {

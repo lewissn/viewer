@@ -49,6 +49,8 @@ interface Draft {
 interface Snapshot {
   generatedSteps: GeneratedStep[];
   groupParts: Record<string, string[]>;
+  /** Steps the guide puts before the editable ones (fitting the face frames) */
+  leadSteps: number;
 }
 
 interface Props {
@@ -223,7 +225,7 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
     if (!c || !snap) return;
     const ai = activeIndexFor(resolve(snap, d.steps).steps, index);
     if (ai < 0) c.restart();
-    else c.jumpToStep(ai);
+    else c.jumpToStep(ai + snap.leadSteps);
   }
 
   /** Apply an edit: update the draft, rebuild the preview if the steps changed shape */
@@ -348,8 +350,10 @@ export default function GuideEditor({ cabinet, title, onSave, onClose }: Props) 
   async function playStep() {
     const c = controllerRef.current;
     if (!c || !selectedStep || selectedStep.hidden) return;
-    if (selectedActive <= 0) c.restart();
-    else c.jumpToStep(selectedActive - 1);
+    // The guide may open with steps of its own (fitting the face frames)
+    const target = selectedActive + (snapshot?.leadSteps ?? 0);
+    if (target <= 0) c.restart();
+    else c.jumpToStep(target - 1);
     await c.next();
   }
 
