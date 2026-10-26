@@ -22,37 +22,6 @@ interface Props {
   project: Project;
 }
 
-/** After this long loading a model, offer to try again (ms) */
-const SLOW_LOAD_MS = 20_000;
-
-/**
- * Where the card docks beside the model rather than below it: wide screens,
- * and a phone turned on its side, where a card below would leave the model
- * a sliver.
- */
-const DOCK_QUERY = "(min-width: 1024px), (orientation: landscape) and (max-height: 520px)";
-// Written out in full: Tailwind only builds classes it can see in the source
-const LANDSCAPE_DOCK =
-  "[@media(orientation:landscape)_and_(max-height:520px)]:left-auto " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:right-3 " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:bottom-3 " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:translate-x-0 " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:w-[340px] " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:min-w-0 " +
-  "[@media(orientation:landscape)_and_(max-height:520px)]:max-w-none";
-
-// The card's buttons stay in reach (pinned to the bottom of the card while
-// its details scroll) and are big enough for a thumb
-const NAV_ROW =
-  "sticky bottom-0 -mx-5 -mb-4 mt-2 px-4 py-2 flex items-center justify-between gap-2 border-t border-[var(--sidebar-border)]/40 bg-[var(--card-bg)]";
-const NAV_TEXT_BUTTON =
-  "min-h-[44px] px-3 rounded-full text-[14px] text-[var(--muted)] hover:text-[var(--foreground)] active:bg-[var(--muted)]/10 transition-colors disabled:opacity-30";
-const NAV_PRIMARY =
-  "min-h-[44px] px-6 rounded-full bg-[var(--accent)] text-white text-[15px] font-semibold hover:opacity-90 transition-colors active:scale-95 disabled:opacity-50";
-
-/** How far a finger has to travel sideways across the card to change step (px) */
-const SWIPE_PX = 60;
-
 /** Space kept between the wizard card and the model (px) */
 const CARD_GAP = 16;
 const NO_INSET = { right: 0, bottom: 0 };
@@ -71,10 +40,7 @@ export default function ProjectClient({ project }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [wizardOpen, setWizardOpen] = useState(true);
-  // The model is taking longer than it should: offer to try again
-  const [slowLoad, setSlowLoad] = useState(false);
-  // Card folded down to the instruction and buttons, to see more of the model
-  const [compact, setCompact] = useState(false);
+  const [activeCabinetId, setActiveCabinetId] = useState<string | null>(null);
   const [state, setState] = useState<ControllerState>({
     currentStep: -1,
     totalSteps: 0,
@@ -127,13 +93,6 @@ export default function ProjectClient({ project }: Props) {
     async (cabinet: CabinetInstance) => {
       if (!containerRef.current || !cabinet.modelFileUrl) return;
 
-      // Every callback from this load checks it is still the current one: a
-      // viewer torn down by a newer load can still report "loaded" or
-      // "failed", and must not switch the spinner off, show an error, or
-      // overwrite the guide of the cabinet that replaced it.
-      const loadId = ++loadIdRef.current;
-      const current = () => loadId === loadIdRef.current;
-
       // Cleanup previous viewer
       controllerRef.current?.destroy();
       try {
@@ -146,7 +105,6 @@ export default function ProjectClient({ project }: Props) {
       containerRef.current.innerHTML = "";
 
       setLoading(true);
-      setSlowLoad(false);
       setLoadError("");
       setWizardOpen(true);
       setResumeStep(null);
@@ -157,23 +115,19 @@ export default function ProjectClient({ project }: Props) {
         activeSteps: [],
         isAnimating: false,
       });
-      // On a slow or dropped mobile connection, offer a way out of the spinner
-      window.setTimeout(() => {
-        if (current()) setSlowLoad(true);
-      }, SLOW_LOAD_MS);
 
+      const loadId = ++loadIdRef.current;
       const OV = await import("online-3d-viewer");
       // A newer load started while the viewer library was loading (a second
       // cabinet click, or React re-running the effect) — let that one win,
       // or both would mount a viewer and the stale one stays on top.
-      if (!current() || !containerRef.current) return;
+      if (loadId !== loadIdRef.current || !containerRef.current) return;
       containerRef.current.innerHTML = "";
 
       const controller = new AssemblyGuideController();
       controllerRef.current = controller;
 
       controller.subscribe((newState) => {
-        if (!current()) return;
         setState({ ...newState });
         // Persist progress whenever the step advances (skip intro/complete).
         try {
@@ -217,9 +171,7 @@ export default function ProjectClient({ project }: Props) {
           30
         ),
         onModelLoaded: () => {
-          if (!current()) return;
           setLoading(false);
-          setSlowLoad(false);
           controller.initDynamic(
             embeddedViewer,
             OV,
@@ -247,10 +199,10 @@ export default function ProjectClient({ project }: Props) {
           }
         },
         onModelLoadFailed: () => {
-          if (!current()) return;
           setLoading(false);
-          setSlowLoad(false);
-          setLoadError("The 3D model didn't load. Check your connection and try again.");
+          setLoadError(
+            "Failed to load the 3D model. Please try again later."
+          );
         },
       });
 
@@ -261,7 +213,7 @@ export default function ProjectClient({ project }: Props) {
       const inner = embeddedViewer.GetViewer();
       inner.SetMouseClickHandler(
         (button: number, mouseCoords: { x: number; y: number }) => {
-          if (button !== 1 || !current()) return;
+          if (button !== 1) return;
           const ud = inner.GetMeshUserDataUnderMouse(
             OV.IntersectionMode.MeshOnly,
             mouseCoords
@@ -315,27 +267,17 @@ export default function ProjectClient({ project }: Props) {
         cabinet.modelFileUrl,
         ...textureUrls,
       ]);
+      setActiveCabinetId(cabinet.cabinetId);
     },
     []
   );
 
-  // React to cabinet param changes. Keyed on the cabinet's id, set before the
-  // load starts: opening a cabinet re-renders the page on the server, which
-  // hands over a fresh project object mid-load, and comparing objects (or an
-  // id only set once the load finishes) used to start a second load that tore
-  // down the first.
-  const requestedIdRef = useRef<string | null>(null);
+  // React to cabinet param changes
   useEffect(() => {
-    if (!activeCabinet || requestedIdRef.current === activeCabinet.cabinetId) return;
-    requestedIdRef.current = activeCabinet.cabinetId;
-    loadCabinet(activeCabinet);
-  }, [activeCabinet, loadCabinet]);
-
-  function handleRetryLoad() {
-    if (!activeCabinet) return;
-    requestedIdRef.current = activeCabinet.cabinetId;
-    loadCabinet(activeCabinet);
-  }
+    if (activeCabinet && activeCabinet.cabinetId !== activeCabinetId) {
+      loadCabinet(activeCabinet);
+    }
+  }, [activeCabinet, activeCabinetId, loadCabinet]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -358,7 +300,7 @@ export default function ProjectClient({ project }: Props) {
     const card = cardRef.current;
     const main = mainRef.current;
     if (!wizardShown || !card || !main) return;
-    const wide = window.matchMedia(DOCK_QUERY);
+    const wide = window.matchMedia("(min-width: 1024px)");
     const measure = () => {
       const c = card.getBoundingClientRect();
       const m = main.getBoundingClientRect();
@@ -395,38 +337,6 @@ export default function ProjectClient({ project }: Props) {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-
-  // Keep the phone's screen on while a cabinet is being built: hands are full
-  // of panels, and a locked screen mid-step is the last thing anyone wants.
-  // The browser drops the lock when the page is hidden, so it is taken again
-  // on return.
-  const building = wizardShown && state.currentStep >= 0 && state.currentStep < state.totalSteps;
-  useEffect(() => {
-    if (!building || !("wakeLock" in navigator)) return;
-    let lock: { release: () => Promise<void> } | null = null;
-    let cancelled = false;
-    const take = async () => {
-      try {
-        const next = await (navigator as Navigator & {
-          wakeLock: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
-        }).wakeLock.request("screen");
-        if (cancelled) next.release().catch(() => {});
-        else lock = next;
-      } catch {
-        // Refused (low battery, not visible) — the screen just sleeps as usual
-      }
-    };
-    const onVisible = () => {
-      if (document.visibilityState === "visible") take();
-    };
-    take();
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      lock?.release().catch(() => {});
-    };
-  }, [building]);
 
   // Update viewer background when theme changes
   useEffect(() => {
@@ -469,25 +379,6 @@ export default function ProjectClient({ project }: Props) {
   function handleReopen() {
     controllerRef.current?.restart();
     setWizardOpen(true);
-  }
-
-  // A sideways swipe across the card changes step, for a thumb that is
-  // already there; a mostly vertical one is left to scroll the card
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-  function handleCardTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    touchStart.current = t ? { x: t.clientX, y: t.clientY } : null;
-  }
-  function handleCardTouchEnd(e: React.TouchEvent) {
-    const start = touchStart.current;
-    const t = e.changedTouches[0];
-    touchStart.current = null;
-    if (!start || !t || state.isAnimating || state.currentStep < 0 || state.currentStep >= state.totalSteps) return;
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (Math.abs(dx) < SWIPE_PX || Math.abs(dy) > Math.abs(dx) / 2) return;
-    if (dx < 0) handleNext();
-    else handleBack();
   }
 
   function handleSelectPart(partId: string) {
@@ -623,19 +514,6 @@ export default function ProjectClient({ project }: Props) {
             <p className="mt-4 text-[14px] text-[var(--muted)]">
               Loading 3D model...
             </p>
-            {slowLoad && (
-              <>
-                <p className="mt-3 max-w-xs text-center text-[13px] text-[var(--muted)]">
-                  This is taking longer than usual — a weak signal can stall it.
-                </p>
-                <button
-                  onClick={handleRetryLoad}
-                  className="mt-3 min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-medium active:scale-95 transition-transform"
-                >
-                  Try again
-                </button>
-              </>
-            )}
           </div>
         )}
 
@@ -660,12 +538,6 @@ export default function ProjectClient({ project }: Props) {
             <p className="text-[15px] text-[var(--foreground)] font-medium text-center">
               {loadError}
             </p>
-            <button
-              onClick={handleRetryLoad}
-              className="mt-4 min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-medium active:scale-95 transition-transform"
-            >
-              Try again
-            </button>
           </div>
         )}
 
@@ -762,51 +634,31 @@ export default function ProjectClient({ project }: Props) {
         {wizardOpen && !loading && !loadError && hasCabinet && (
           <div
             ref={cardRef}
-            onTouchStart={handleCardTouchStart}
-            onTouchEnd={handleCardTouchEnd}
-            className={`absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[360px] sm:max-w-[420px] lg:left-auto lg:right-6 lg:translate-x-0 lg:w-[380px] lg:min-w-0 ${LANDSCAPE_DOCK}`}
+            className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[360px] sm:max-w-[420px] lg:left-auto lg:right-6 lg:translate-x-0 lg:w-[380px] lg:min-w-0"
           >
-            <div className="backdrop-blur-xl bg-[var(--card-bg)] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] overflow-y-auto max-h-[70vh] lg:max-h-[calc(100vh-6.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:max-h-[calc(100vh-1.5rem)] border border-[var(--sidebar-border)]/50">
-              {/* Progress bar, and a toggle to fold the card down to the instruction */}
+            <div className="backdrop-blur-xl bg-[var(--card-bg)] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] overflow-y-auto max-h-[70vh] lg:max-h-[calc(100vh-6.5rem)] border border-[var(--sidebar-border)]/50">
+              {/* Progress bar */}
               {state.totalSteps > 0 && (
-                <div className="flex items-center gap-2 pl-5 pr-2 pt-2">
-                  <div className="flex flex-1 gap-1">
-                    {state.activeSteps.map((_, i) => (
-                      <div
-                        key={i}
-                        className="h-1.5 flex-1 rounded-full transition-all duration-300"
-                        style={{
-                          backgroundColor:
-                            i <= stepIndex ? "var(--accent)" : "var(--muted)",
-                          opacity: i <= stepIndex ? 1 : 0.35,
-                          boxShadow:
-                            i === stepIndex
-                              ? "0 0 8px rgba(0, 113, 227, 0.4)"
-                              : "none",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => setCompact((c) => !c)}
-                    aria-label={compact ? "Show step details" : "Hide step details to see more of the model"}
-                    aria-expanded={!compact}
-                    className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[var(--muted)] hover:bg-[var(--muted)]/10 active:scale-90 transition-all"
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-transform duration-200 ${compact ? "rotate-180" : ""}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2.5}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
+                <div className="flex gap-1 px-5 pt-4">
+                  {state.activeSteps.map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-1.5 flex-1 rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor:
+                          i <= stepIndex ? "var(--accent)" : "var(--muted)",
+                        opacity: i <= stepIndex ? 1 : 0.35,
+                        boxShadow:
+                          i === stepIndex
+                            ? "0 0 8px rgba(0, 113, 227, 0.4)"
+                            : "none",
+                      }}
+                    />
+                  ))}
                 </div>
               )}
 
-              <div className="px-5 pt-2 pb-4">
+              <div className="px-5 py-4">
                 {/* Intro state — context-aware build summary */}
                 {isIntro && (
                   <>
@@ -814,7 +666,7 @@ export default function ProjectClient({ project }: Props) {
                       {cabinetTitle}
                     </h3>
 
-                    {compact ? null : state.cabinetSummary ? (
+                    {state.cabinetSummary ? (
                       <div className="space-y-3 mb-4">
                         {/* Build overview */}
                         {state.cabinetSummary.features.length > 0 && (
@@ -878,11 +730,17 @@ export default function ProjectClient({ project }: Props) {
                       </p>
                     )}
 
-                    <div className={NAV_ROW}>
-                      <button onClick={handleClose} className={NAV_TEXT_BUTTON}>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={handleClose}
+                        className="text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                      >
                         Close
                       </button>
-                      <button onClick={handleNext} className={NAV_PRIMARY}>
+                      <button
+                        onClick={handleNext}
+                        className="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-medium hover:opacity-90 transition-colors active:scale-95"
+                      >
                         Start Assembly
                       </button>
                     </div>
@@ -901,7 +759,7 @@ export default function ProjectClient({ project }: Props) {
                         Get a second pair of hands for anything large.
                       </StepCallout>
                     )}
-                    <TermAwareText className="text-[16px] sm:text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2 block">
+                    <TermAwareText className="text-[15px] text-[var(--foreground)] font-medium leading-relaxed mb-2 block">
                       {currentStepData.copy}
                     </TermAwareText>
                     {laysDown && (
@@ -918,7 +776,7 @@ export default function ProjectClient({ project }: Props) {
                     )}
 
                     {/* Fittings going onto this step's panels, where known */}
-                    {!compact && currentStepFittings.length > 0 && (
+                    {currentStepFittings.length > 0 && (
                       <StepFittingsList
                         fittings={currentStepFittings}
                         open={partsOpen}
@@ -930,7 +788,7 @@ export default function ProjectClient({ project }: Props) {
                     )}
 
                     {/* Fittings reference */}
-                    {!compact && currentStepData.usesFittings && hasFittings && currentStepFittings.length === 0 && (
+                    {currentStepData.usesFittings && hasFittings && currentStepFittings.length === 0 && (
                       <p className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-1.5">
                         <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.384-3.08A1.615 1.615 0 015 10.683V6.748a1.615 1.615 0 011.036-1.506l5.384-3.08a1.615 1.615 0 011.16 0l5.384 3.08A1.615 1.615 0 0119 6.748v3.935a1.615 1.615 0 01-1.036 1.506l-5.384 3.08a1.615 1.615 0 01-1.16 0z" />
@@ -940,7 +798,7 @@ export default function ProjectClient({ project }: Props) {
                     )}
 
                     {/* Panels to pick up for this step */}
-                    {!compact && currentStepParts.length > 0 && (
+                    {currentStepParts.length > 0 && (
                       <StepPartsList
                         parts={currentStepParts}
                         open={partsOpen}
@@ -952,12 +810,12 @@ export default function ProjectClient({ project }: Props) {
                     )}
 
                     {/* Drawer sub-steps (visual only) */}
-                    {!compact && currentStepData.drawerMode === "assembleFirst" && (
+                    {currentStepData.drawerMode === "assembleFirst" && (
                       <DrawerSubSteps />
                     )}
 
                     {/* Expandable helpers */}
-                    {!compact && currentStepData.helpers && currentStepData.helpers.length > 0 && (
+                    {currentStepData.helpers && currentStepData.helpers.length > 0 && (
                       <div className="space-y-0 mb-1">
                         {currentStepData.helpers.map((helper, i) => (
                           <HelperAccordion key={`${stepIndex}-${i}`} helper={helper} />
@@ -965,16 +823,29 @@ export default function ProjectClient({ project }: Props) {
                       </div>
                     )}
 
-                    <div className={NAV_ROW}>
-                      <button onClick={handleBack} disabled={state.isAnimating} className={NAV_TEXT_BUTTON}>
+                    <div className="flex items-center justify-between mt-3">
+                      <button
+                        onClick={handleBack}
+                        disabled={state.isAnimating}
+                        className="text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-30"
+                      >
                         Back
                       </button>
-                      <div className="flex items-center gap-1">
-                        <button onClick={handleClose} className={NAV_TEXT_BUTTON}>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleClose}
+                          className="text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                        >
                           Close
                         </button>
-                        <button onClick={handleNext} disabled={state.isAnimating} className={NAV_PRIMARY}>
-                          {stepIndex + 1 >= state.totalSteps ? "Finish" : "Next"}
+                        <button
+                          onClick={handleNext}
+                          disabled={state.isAnimating}
+                          className="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-medium hover:opacity-90 transition-colors active:scale-95 disabled:opacity-50"
+                        >
+                          {stepIndex + 1 >= state.totalSteps
+                            ? "Finish"
+                            : "Next"}
                         </button>
                       </div>
                     </div>
@@ -1041,11 +912,17 @@ export default function ProjectClient({ project }: Props) {
                       ))}
                     </ul>
 
-                    <div className={NAV_ROW}>
-                      <button onClick={handleClose} className={NAV_TEXT_BUTTON}>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={handleClose}
+                        className="text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                      >
                         Close
                       </button>
-                      <button onClick={handleRestart} className={NAV_PRIMARY}>
+                      <button
+                        onClick={handleRestart}
+                        className="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-medium hover:opacity-90 transition-colors active:scale-95"
+                      >
                         Restart Guide
                       </button>
                     </div>
@@ -1130,7 +1007,7 @@ function StepFittingsList({
         onClick={onToggle}
         aria-expanded={open}
         aria-controls="step-fittings-list"
-        className="flex items-center gap-1.5 w-full min-h-[40px] sm:min-h-0 py-1.5 text-[13px] sm:text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        className="flex items-center gap-1.5 w-full py-1 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
       >
         <svg
           className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
@@ -1204,7 +1081,7 @@ function StepPartsList({
         onClick={onToggle}
         aria-expanded={open}
         aria-controls="step-parts-list"
-        className="flex items-center gap-1.5 w-full min-h-[40px] sm:min-h-0 py-1.5 text-[13px] sm:text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        className="flex items-center gap-1.5 w-full py-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
       >
         <svg
           className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
@@ -1278,7 +1155,7 @@ function HelperAccordion({ helper }: { helper: StepHelper }) {
     <div className="border-t border-[var(--sidebar-border)]/30">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 w-full min-h-[40px] sm:min-h-0 py-1.5 text-[13px] sm:text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        className="flex items-center gap-1.5 w-full py-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
       >
         <svg
           className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}

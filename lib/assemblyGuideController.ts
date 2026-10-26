@@ -130,7 +130,7 @@ function fittingJoint(
   onEdge: boolean,
   cb: Box,
   ob: Box
-): { kind: "face" | "edge"; axis: Axis; end?: number; distance: number } | null {
+): { kind: "face" | "edge"; axis: Axis; end?: number } | null {
   // The panel whose face takes the joint: the carrier, unless the fitting is
   // in the carrier's edge and points into the other's face
   const a = thinAxis(onEdge ? ob : cb);
@@ -139,17 +139,14 @@ function fittingJoint(
   );
   const gap = Math.max(0, ob.min[a] - cb.max[a], cb.min[a] - ob.max[a]);
   const reach = Math.max(0, ob.min[a] - fc[a], fc[a] - ob.max[a]);
-  if (inBoth && gap <= 30 && reach <= 30) return { kind: "face", axis: a, distance: reach };
+  if (inBoth && gap <= 30 && reach <= 30) return { kind: "face", axis: a };
 
   if (onEdge || sunkInto(cb, ob)) return null;
-  // A cam near a corner is near two edges: take the nearer edge this panel meets
-  let best: { kind: "edge"; axis: Axis; end: number; distance: number } | null = null;
   const t = thinAxis(cb);
   for (const b of AXES.filter((x) => x !== t)) {
     const atMax = cb.max[b] - fc[b] <= fc[b] - cb.min[b];
     const end = atMax ? cb.max[b] : cb.min[b];
-    const distance = Math.abs(fc[b] - end);
-    if (distance > 50) continue;
+    if (Math.abs(fc[b] - end) > 50) continue;
     // The other panel starts at that edge (or a little into it) and carries on past it
     const meets = atMax
       ? ob.min[b] >= end - 25 && ob.min[b] <= end + 1 && ob.max[b] > end + 1
@@ -158,32 +155,9 @@ function fittingJoint(
     const covers =
       ob.min[t] <= cb.min[t] + 1 && ob.max[t] >= cb.max[t] - 1 &&
       fc[c] >= ob.min[c] - 2 && fc[c] <= ob.max[c] + 2;
-    if (meets && covers && (!best || distance < best.distance)) best = { kind: "edge", axis: b, end, distance };
+    if (meets && covers) return { kind: "edge", axis: b, end };
   }
-  return best;
-}
-
-/** Rafix pins need a board this thick to screw into (mm); a 9mm back is not one */
-const MIN_PIN_BOARD = 15;
-
-/**
- * The one panel a Rafix cam joins its carrier to. The classic joint (the
- * other panel across the edge the cam sits by) wins over one through the
- * face — a counter top resting on a top's cams is screwed down, not cammed —
- * and of those, the joint nearest the cam: a cam near a corner is near two
- * edges, and only one is its joint. Never a board too thin to take the pin.
- */
-function camPartner<P>(fc: Vec3, cb: Box, others: Iterable<[P, Box]>, skip: P) {
-  let best: { other: P; ob: Box; kind: "face" | "edge"; axis: Axis; distance: number } | null = null;
-  const rank = (j: { kind: string; distance: number }) => (j.kind === "edge" ? 0 : 1000) + j.distance;
-  for (const [other, ob] of others) {
-    if (other === skip) continue;
-    const thickness = Math.min(...AXES.map((a) => ob.max[a] - ob.min[a]));
-    if (thickness < MIN_PIN_BOARD) continue;
-    const j = fittingJoint(fc, false, cb, ob);
-    if (j && (!best || rank(j) < rank(best))) best = { other, ob, ...j };
-  }
-  return best;
+  return null;
 }
 
 /** Fallback travel directions tried when a part's own path in is blocked */
@@ -245,11 +219,6 @@ interface PartMesh {
   location?: FittingLocation;
   /** Drawn by the guide (a cam's pin), not part of the exported model */
   synthetic?: boolean;
-  /**
-   * A face-frame piece fitted to its panel (attachedTo) in the guide's first
-   * step: its own group before it joined the panel's, e.g. "Face Frame - Left"
-   */
-  frameGroup?: string;
 }
 
 /** One line of a step's fittings list: fittings of one kind on one face of a panel */
@@ -478,10 +447,6 @@ export class AssemblyGuideController {
     // each cam joint, carried by the panel it is screwed into
     this.addCamPins();
 
-    // Face frames go onto their panels before the build starts, and ride
-    // with them from then on (after the pins, which some of them carry)
-    this.attachFaceFrames();
-
     // Classify and group by groupKey (fittings excluded)
     this.groupPartsByClassification();
 
@@ -516,10 +481,9 @@ export class AssemblyGuideController {
     const groupSet = new Set(
       this.allParts.filter((p) => !p.isFitting).map((p) => p.groupKey)
     );
-    // The panels themselves: a face frame or handle riding on one isn't another
     const groupCounts: Record<string, number> = {};
     for (const [key, parts] of this.partGroups) {
-      groupCounts[key] = parts.filter((p) => !p.attachedTo).length;
+      groupCounts[key] = parts.length;
     }
     const generated = generateGuideFromGroups(
       groupSet,
@@ -534,8 +498,7 @@ export class AssemblyGuideController {
 
     // Build cabinet summary from detected groups
     this._cabinetSummary = buildCabinetSummary(
-      // Face frames have joined their panels' groups; the summary still lists them
-      [...generated.detectedGroups, ...new Set(this._faceFrames.map((f) => f.frameGroup!))],
+      generated.detectedGroups,
       groupCounts,
       {
         bottomOverlaysSides: overrides?.bottomOverlaysSides,
@@ -579,33 +542,6 @@ export class AssemblyGuideController {
       });
       this._stepGroupKeys.push(step.groupKeys);
       this._stepDrawerModes.push(step.drawerMode);
-    }
-
-    // The face frames go on first, each onto its own panel
-    if (this._faceFrames.length) {
-      const one = this._faceFrames.length === 1;
-      this._activeSteps.unshift({
-        prefixes: [],
-        copy: one
-          ? "Fit the face frame piece to its panel before you start the build."
-          : "Fit each face frame piece to its panel before you start the build.",
-        usesFittings: true,
-        faceFrames: true,
-        helpers: [
-          {
-            title: "Why first",
-            content:
-              "A face frame lines up and tightens far more easily on a single panel lying flat than on the assembled cabinet. Done now, each panel goes into the build with its frame already on.",
-          },
-          {
-            title: "Before tightening",
-            content:
-              "Lay each panel flat with its front edge towards you, offer up its face frame piece and lock the cams. Check the frame sits flush with the panel's outer face before tightening fully.",
-          },
-        ],
-      });
-      this._stepGroupKeys.unshift([]);
-      this._stepDrawerModes.unshift(undefined);
     }
 
     // Parts list per step, for the wizard
@@ -1724,83 +1660,6 @@ export class AssemblyGuideController {
     if (this._diagonals) this._diagonals.visible = !!this._activeSteps[stepIndex]?.squareCheck;
   }
 
-  // ── Face frames first ──
-
-  /** Face-frame pieces, each fitted to its panel in the guide's first step */
-  private _faceFrames: PartMesh[] = [];
-
-  /**
-   * Customers are told to fit the face frames to their panels before
-   * anything else: a frame lines up far more easily on one panel lying flat
-   * than on the assembled cabinet. So each face-frame piece is tied to the
-   * panel it is fitted to — the one its back meets over the largest area —
-   * and from then on rides with that panel like a handle on a door, while
-   * the guide's first step shows each piece going onto its panel.
-   */
-  private attachFaceFrames() {
-    this._faceFrames = [];
-    const ownRules = new Set([
-      ...(VALIDATION_OPTIONS.openableGroups ?? []),
-      ...(VALIDATION_OPTIONS.looseGroups ?? []),
-    ]);
-    const isFrame = (p: PartMesh) => p.groupKey.startsWith("Face Frame");
-    const panels = (pred: (p: PartMesh) => boolean) =>
-      this.allParts
-        .filter((p) => !p.isFitting && !p.attachedTo && pred(p))
-        .map((p) => [p, this.getPartWorldBounds(p)] as const)
-        .filter((e): e is readonly [PartMesh, Box] => e[1] !== null);
-    const frames = panels(isFrame);
-    const hosts = panels((p) => !isFrame(p) && !ownRules.has(p.groupKey));
-    for (const [frame, fb] of frames) {
-      const t = thinAxis(fb);
-      let host: PartMesh | null = null;
-      let most = 0;
-      for (const [panel, pb] of hosts) {
-        // Right behind (or in front of) the frame, across its thickness
-        const gap = Math.max(pb.min[t] - fb.max[t], fb.min[t] - pb.max[t]);
-        if (gap > 2 || gap < -2) continue;
-        const area = AXES.filter((a) => a !== t).reduce(
-          (n, a) => n * Math.max(0, Math.min(fb.max[a], pb.max[a]) - Math.max(fb.min[a], pb.min[a])),
-          1
-        );
-        if (area > most) {
-          most = area;
-          host = panel;
-        }
-      }
-      if (!host) continue;
-      frame.frameGroup = frame.groupKey;
-      frame.attachedTo = host;
-      frame.groupKey = host.groupKey;
-      frame.drawerIndex = host.drawerIndex;
-      this._faceFrames.push(frame);
-      log(`Face frame: "${frame.name}" goes on "${host.name}"`);
-    }
-  }
-
-  /**
-   * Where a face-frame piece (or a fitting it carries) starts in the first
-   * step: in front of its panel, by a third of the explode distance, moving
-   * onto it along the frame's thickness.
-   */
-  private frameApproach(part: PartMesh): Vec3 {
-    const frame = part.frameGroup ? part : part.carrier;
-    const host = frame?.attachedTo;
-    const fb = frame && this.getPartWorldBounds(frame);
-    const hb = host && this.getPartWorldBounds(host);
-    if (!frame || !fb || !hb) return { ...part.explodedPos };
-    const t = thinAxis(fb);
-    const side = Math.sign(boxMid(fb, t) - boxMid(hb, t)) || 1;
-    const local = AXIS_DIRECTIONS.reduce((best, d) => {
-      const w = this.localToWorldDirection(frame, d);
-      const bw = this.localToWorldDirection(frame, best);
-      return w[t] * side > bw[t] * side ? d : best;
-    });
-    const dist = this._explodeDistance / 3;
-    const e = part.explodedPos;
-    return { x: e.x + local.x * dist, y: e.y + local.y * dist, z: e.z + local.z * dist };
-  }
-
   /** Pin meshes this controller added to the scene (see addCamPins) */
   private _pins: any[] = [];
 
@@ -1823,33 +1682,30 @@ export class AssemblyGuideController {
     const cams = this.allParts.filter((p) => p.carrier && p.location?.label === "Rafix Cam");
     if (!cams.length) return;
 
-    // Doors, drawers and loose shelves are hung, slid or rested, never cammed
-    const notCammed = new Set([
-      ...(VALIDATION_OPTIONS.openableGroups ?? []),
-      ...(VALIDATION_OPTIONS.looseGroups ?? []),
-    ]);
     const boxes = new Map<PartMesh, Box>();
     for (const p of this.allParts) {
-      if (p.isFitting || p.attachedTo || notCammed.has(p.groupKey)) continue;
+      if (p.isFitting || p.attachedTo) continue;
       const b = this.getPartWorldBounds(p);
       if (b) boxes.set(p, b);
     }
 
     let added = 0;
-    const tally = new Map<string, number>();
-    const count = (k: string) => tally.set(k, (tally.get(k) ?? 0) + 1);
     for (const cam of cams) {
       const cb = boxes.get(cam.carrier!);
       const fb = this.getPartWorldBounds(cam);
       if (!cb || !fb) continue;
       const fc = { x: boxMid(fb, "x"), y: boxMid(fb, "y"), z: boxMid(fb, "z") };
-      const joint = camPartner(fc, cb, boxes, cam.carrier!);
-      if (!joint) {
-        count(`no pin: cam on ${exportBaseName(cam.carrier!.name)}, ${cam.location!.face}`);
-        continue;
+      let joint: { other: PartMesh; ob: Box; kind: "face" | "edge"; axis: Axis } | null = null;
+      for (const [other, ob] of boxes) {
+        if (other === cam.carrier) continue;
+        const j = fittingJoint(fc, false, cb, ob);
+        if (j) {
+          joint = { other, ob, ...j };
+          break;
+        }
       }
+      if (!joint) continue;
       const { other, ob, kind, axis } = joint;
-      count(`pin: cam on ${exportBaseName(cam.carrier!.name)} (${cam.location!.face}) -> ${exportBaseName(other.name)} by ${kind}`);
 
       // From the cam, across into the other panel and 12mm into it. At an
       // edge the pin runs through the middle of the carrier's thickness.
@@ -1888,7 +1744,6 @@ export class AssemblyGuideController {
       });
     }
     log(`Cam pins: ${added} added for ${cams.length} cams`);
-    for (const [k, n] of [...tally].sort()) log(`  ${n}× ${k}`);
   }
 
   /**
@@ -2037,11 +1892,8 @@ export class AssemblyGuideController {
       if (!cb || !fb) continue;
       const fc = { x: mid(fb, "x"), y: mid(fb, "y"), z: mid(fb, "z") };
       const onEdge = /edge/.test(f.location!.face);
-      // A cam joins exactly one panel (see camPartner); other fittings may
-      // hold several together
-      const cam = f.location!.label === "Rafix Cam" ? camPartner(fc, cb, boxes, carrier) : null;
       for (const [other, ob] of boxes) {
-        if (other === carrier || (f.location!.label === "Rafix Cam" && other !== cam?.other)) continue;
+        if (other === carrier) continue;
         const joint = fittingJoint(fc, onEdge, cb, ob);
         if (!joint) continue;
         const { axis } = joint;
@@ -2497,11 +2349,6 @@ export class AssemblyGuideController {
   }
 
   private getPartsForStep(step: AssemblyStep): PartMesh[] {
-    if (this._dynamicMode && step.faceFrames) {
-      // The face-frame pieces, with what they carry (pins for the panel's cams)
-      const frames = new Set(this._faceFrames);
-      return [...this._faceFrames, ...this.allParts.filter((p) => p.carrier && frames.has(p.carrier))];
-    }
     if (this._dynamicMode) {
       let parts: PartMesh[] = [];
       for (const key of step.prefixes) {
@@ -2647,18 +2494,6 @@ export class AssemblyGuideController {
         ? currentKeys
         : currentKeys.map(normalizePartName)
     );
-    // The face-frame step shows just the frames and the panels they go on
-    const step = options?.currentStepIndex !== undefined ? this._activeSteps[options.currentStepIndex] : undefined;
-    if (this._dynamicMode && step?.faceFrames) {
-      const shown = new Set<PartMesh>(this._faceFrames);
-      for (const f of this._faceFrames) if (f.attachedTo) shown.add(f.attachedTo);
-      for (const part of this.allParts) {
-        const host = part.carrier ?? part.attachedTo;
-        this.setPartVisible(part, shown.has(part) || (!!host && shown.has(host)));
-      }
-      return;
-    }
-
     const isDrawerStep = currentKeys.some((k) => DRAWER_GROUP_KEYS.has(k));
     const lastDrawerIdx = this.getLastDrawerStepIndex();
     const pastInsertStep =
@@ -2783,20 +2618,6 @@ export class AssemblyGuideController {
   private async animateAssembleStep(step: AssemblyStep, duration = 700) {
     const parts = this.getPartsForStep(step);
     if (parts.length === 0) return;
-
-    // Face frames go onto their panels where the panels lie, waiting for
-    // their own steps: they end up riding with them, not in the cabinet
-    if (step.faceFrames) {
-      const from = new Map<PartMesh, Vec3>();
-      const to = new Map<PartMesh, Vec3>();
-      for (const p of parts) {
-        from.set(p, this.frameApproach(p));
-        to.set(p, { ...p.explodedPos });
-        this.setPartPosition(p, from.get(p)!);
-      }
-      await this.animate(parts, from, to, duration);
-      return;
-    }
 
     // assembleFirst: animate box parts first, then front (sequential)
     if (step.drawerMode === "assembleFirst") {
@@ -2970,8 +2791,6 @@ export class AssemblyGuideController {
 
     for (let i = 0; i <= targetStep; i++) {
       const step = this._activeSteps[i];
-      // Face frames ride with their panels, which stay out until their own steps
-      if (step.faceFrames) continue;
       const parts = this.getPartsForStep(step);
       for (const part of parts) {
         this.applyAssembledToPart(part);
@@ -3036,8 +2855,6 @@ export class AssemblyGuideController {
 
     for (let i = 0; i <= targetStep; i++) {
       const step = this._activeSteps[i];
-      // Face frames ride with their panels, which stay out until their own steps
-      if (step.faceFrames) continue;
       const parts = this.getPartsForStep(step);
       for (const part of parts) {
         this.applyAssembledToPart(part);
@@ -3113,12 +2930,6 @@ export class AssemblyGuideController {
       (p) => p.threeMesh.userData?.originalMeshInstance === meshInstance
     );
     if (!part) return null;
-    if (part.attachedTo && part.frameGroup) {
-      return {
-        label: `${this.boardLabel(part)} · face frame on ${this.boardLabel(part.attachedTo)}`,
-        ...this.getBoardSize(part),
-      };
-    }
     if (part.attachedTo) {
       return {
         label: `Handle / knob on ${this.boardLabel(part.attachedTo)}`,
@@ -3161,8 +2972,7 @@ export class AssemblyGuideController {
     this._stepFittingMeshes = [];
     for (const step of this._activeSteps) {
       const all = this.getPartsForStep(step);
-      // Face frames are listed once, when they go onto their panels
-      let parts = step.faceFrames ? this._faceFrames : all.filter((p) => !p.isFitting && !p.attachedTo);
+      let parts = all.filter((p) => !p.isFitting && !p.attachedTo);
 
       // Fittings going onto this step's panels, by kind, panel and face.
       // Drilling marks and screw heads have no label and aren't listed. A
@@ -3199,8 +3009,7 @@ export class AssemblyGuideController {
 
       const lines = new Map<string, { line: StepPart; meshes: PartMesh[] }>();
       for (const part of parts) {
-        const label =
-          step.faceFrames && part.attachedTo ? `${labelOf(part)} → ${labelOf(part.attachedTo)}` : labelOf(part);
+        const label = labelOf(part);
         const size = this.getBoardSize(part);
         const id = `${label}|${size.width}|${size.height}|${size.thickness}`;
         const entry = lines.get(id);
@@ -3350,18 +3159,12 @@ export class AssemblyGuideController {
   getEditorSnapshot(): {
     generatedSteps: GeneratedStep[];
     groupParts: Record<string, string[]>;
-    /** Steps the guide puts before the editable ones (fitting the face frames) */
-    leadSteps: number;
   } {
     const groupParts: Record<string, string[]> = {};
     for (const [key, parts] of this.partGroups) {
       if (parts.length > 0) groupParts[key] = parts.map((p) => p.name);
     }
-    return {
-      generatedSteps: this._generatedSteps,
-      groupParts,
-      leadSteps: this._activeSteps[0]?.faceFrames ? 1 : 0,
-    };
+    return { generatedSteps: this._generatedSteps, groupParts };
   }
 
   // ── Listeners ──
