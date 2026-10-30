@@ -52,10 +52,12 @@ export default function AssemblyClient({ guide }: Props) {
     const embeddedViewer = new OV.EmbeddedViewer(containerRef.current, {
       backgroundColor: new OV.RGBAColor(bg.r, bg.g, bg.b, 255),
       defaultColor: new OV.RGBColor(200, 200, 200),
+      // Board edges help tell one panel from the next; above 30° so the
+      // round cams and pins don't turn into a mesh of lines
       edgeSettings: new OV.EdgeSettings(
-        false,
-        new OV.RGBColor(68, 68, 68),
-        1
+        true,
+        isDark ? new OV.RGBColor(20, 20, 20) : new OV.RGBColor(90, 90, 90),
+        30
       ),
       onModelLoaded: () => {
         setLoading(false);

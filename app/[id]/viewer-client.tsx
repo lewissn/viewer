@@ -48,7 +48,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
   const [loadError, setLoadError] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [showEdges, setShowEdges] = useState(false);
+  const [showEdges, setShowEdges] = useState(true);
   const [edgeColor, setEdgeColor] = useState(DEFAULT_EDGE_COLOR);
   const [menuOpen, setMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -84,11 +84,18 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
     const OV = await import("online-3d-viewer");
     ovRef.current = OV;
 
+    const edgeRgb = hexToRgb(DEFAULT_EDGE_COLOR);
+
     // Initialise the embedded viewer with load callbacks
     const embeddedViewer = new OV.EmbeddedViewer(containerRef.current, {
       backgroundColor: new OV.RGBAColor(250, 250, 250, 255),
       defaultColor: new OV.RGBColor(200, 200, 200),
-      edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), EDGE_THRESHOLD),
+      // Outlines on from the start, matching the Edges toggle's default
+      edgeSettings: new OV.EdgeSettings(
+        true,
+        new OV.RGBColor(edgeRgb.r, edgeRgb.g, edgeRgb.b),
+        EDGE_THRESHOLD
+      ),
       onModelLoaded: () => {
         setLoading(false);
         frontMeshInstances.current = collectFrontMeshInstances(
