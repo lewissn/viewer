@@ -15,7 +15,8 @@
  *   copies are interleaved and have to be pulled apart by position.
  * - Vertices are in room coordinates, so a cabinet's hardware sits inside its
  *   carcass.
- * - The room floor, if shown, is one big flat box written at the very end.
+ * - The room floor, if shown, is one big flat box written at the very end, and
+ *   walls and obstacles are chunky boxes among the hardware.
  *
  * Panels are recognised by order and name, never by shape alone: a 50mm face
  * frame rail looks like a stick, and a bar handle looks like a small panel.
@@ -85,6 +86,8 @@ const CARCASS_ORDER: Record<string, number> = {
 const ACCESSORY_DISTANCE = 150;
 /** Copies overlapping by more than this share of the smaller one are one cabinet. */
 const COPY_OVERLAP_LIMIT = 0.25;
+/** No board or fitting is this thick on its thinnest side (mm). */
+const ROOM_OBSTACLE_MIN_THICKNESS = 100;
 
 /** "Left Side 7" -> "Left Side", "Mobile Shelf [2] 16" -> "Mobile Shelf [2]" */
 export function baseName(name: string): string {
@@ -109,6 +112,30 @@ function isRoomFloor(o: ThreeDsObject): boolean {
     longest > 1500 &&
     o.materials.some((m) => m.startsWith("Material 12632256"))
   );
+}
+
+/**
+ * A wall, pillar or boxed-in obstacle drawn in the room ("Wall 1" in PolyBoard,
+ * which the .3ds names after the last panel): one plain box far too chunky to
+ * be a panel or a fitting. It is often inside a cabinet's bounds, like a boiler
+ * cupboard's boiler, so its position says nothing.
+ */
+function isRoomObstacle(o: ThreeDsObject): boolean {
+  return o.vertexCount <= 48 && sortedDims(o)[0] >= ROOM_OBSTACLE_MIN_THICKNESS;
+}
+
+function isRoomObject(o: ThreeDsObject): boolean {
+  return isRoomFloor(o) || isRoomObstacle(o);
+}
+
+/**
+ * Trim fitted on site, written straight after the cabinet below it. Sitting
+ * clear of that cabinet's carcass (it may only touch it) marks it as a
+ * PolyBoard cabinet of its own rather than a part of this one.
+ */
+function isTrimOutside(o: ThreeDsObject, carcass: Box): boolean {
+  const { groupKey } = classifyPart(baseName(o.name));
+  return (groupKey === "Pelmet" || groupKey === "Skirting") && overlapVolume(o, carcass) === 0;
 }
 
 function isCarcassPanel(o: ThreeDsObject): boolean {
@@ -325,8 +352,8 @@ function isCarcass(panels: ThreeDsObject[]): boolean {
 export function splitProject(objects: ThreeDsObject[]): ProjectSplit {
   const warnings: string[] = [];
   const { panels, hardware: tail } = splitPanelsAndHardware(objects);
-  const room = tail.filter(isRoomFloor);
-  const hardware = tail.filter((o) => !isRoomFloor(o));
+  const room = tail.filter(isRoomObject);
+  const hardware = tail.filter((o) => !isRoomObject(o));
 
   const segments = toSegments(toRuns(panels));
   const groups: SplitGroup[] = [];
@@ -344,11 +371,14 @@ export function splitProject(objects: ThreeDsObject[]): ProjectSplit {
       // pelmet or skirting run along the whole wall — is an accessory.
       const box = unionBox(copy.filter(isCarcassPanel));
       const keep: ThreeDsObject[] = [];
+      const trim: ThreeDsObject[] = [];
       for (const p of copy) {
-        if (within(box, centre(p), ACCESSORY_DISTANCE)) keep.push(p);
-        else accessoryPanels.push(p);
+        if (!within(box, centre(p), ACCESSORY_DISTANCE)) accessoryPanels.push(p);
+        else if (isTrimOutside(p, box)) trim.push(p);
+        else keep.push(p);
       }
       groups.push({ ...base, kind: "cabinet", panels: keep, box });
+      if (trim.length) groups.push({ ...base, hardware: [], kind: "loose", panels: trim, box: unionBox(trim) });
     });
   });
 
@@ -391,9 +421,9 @@ export function splitProject(objects: ThreeDsObject[]): ProjectSplit {
  * is a panel or a fitting (see polyboardDxf.ts).
  *
  * Returns null unless every DXF solid matches a .3ds object and every .3ds
- * object other than the room floor matches a solid — anything less means the
- * two were exported at different revisions, and the guessing split is safer
- * than a partial one.
+ * object other than the room floor or an obstacle matches a solid — anything
+ * less means the two were exported at different revisions, and the guessing
+ * split is safer than a partial one. dxfMismatch() says what didn't line up.
  */
 export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): ProjectSplit | null {
   const matches = matchThreeDsObjects(objects, dxf.leaves);
@@ -404,7 +434,7 @@ export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): 
     if (leaf) leafOf.set(o, leaf);
     else room.push(o);
   });
-  if (leafOf.size !== dxf.leaves.length || !room.every(isRoomFloor)) return null;
+  if (leafOf.size !== dxf.leaves.length || !room.every(isRoomObject)) return null;
 
   const names = [...new Set(dxf.cabinets.map((c) => c.name))];
   const groups: SplitGroup[] = [];
@@ -445,6 +475,17 @@ export function splitProjectByDxf(objects: ThreeDsObject[], dxf: DxfStructure): 
   }
   const panelCount = groups.reduce((n, g) => n + g.panels.length, 0);
   return { groups, room, panelCount, hardwareCount: objects.length - room.length - panelCount, warnings };
+}
+
+/** What stopped splitProjectByDxf using a DXF, for the review screen's warning. */
+export function dxfMismatch(objects: ThreeDsObject[], dxf: DxfStructure): string {
+  const matches = matchThreeDsObjects(objects, dxf.leaves);
+  const strays = objects.filter((o, n) => !matches[n].leaf && !isRoomObject(o));
+  const missing = dxf.leaves.length - matches.filter((m) => m.leaf).length;
+  const bits: string[] = [];
+  if (strays.length) bits.push(`${strays.length} .3ds object(s) not in the DXF, first "${strays[0].name}"`);
+  if (missing) bits.push(`${missing} DXF solid(s) not in the .3ds`);
+  return bits.join("; ");
 }
 
 /**
@@ -525,7 +566,10 @@ export function describeGroup(group: SplitGroup): string {
   for (const p of group.panels) {
     const { groupKey } = classifyPart(baseName(p.name));
     if (groupKey === "Door") doors++;
-    else if (groupKey === "Vertical Division") dividers++;
+    else if (groupKey === "Vertical Division") {
+      // PolyBoard's name for an end panel too: one outside the carcass divides nothing
+      if (within(group.box, centre(p), 0)) dividers++;
+    }
     else if (groupKey === "Shelf" || groupKey === "Fixed Shelf") shelves++;
     else if (groupKey === "Drawer") drawerFronts++;
     else if (groupKey.startsWith("Drawer Box")) drawerBoxes.add(extractDrawerIndex(p.name) ?? p.name);

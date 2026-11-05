@@ -17,6 +17,7 @@ import { materialTextures, read3ds, write3ds, type ThreeDsFile } from "./threeDs
 import {
   baseName,
   describeGroup,
+  dxfMismatch,
   groupDimensions,
   groupObjects,
   groupOffset,
@@ -210,12 +211,13 @@ export async function splitProjectModels(sources: ProjectModelSource[]): Promise
     if (source.dxf) {
       const dxfName = fileName(source.dxf.path);
       try {
-        split = splitProjectByDxf(file.objects, readPolyboardDxf(await readDxfText(source.dxf)));
+        const dxf = readPolyboardDxf(await readDxfText(source.dxf));
+        split = splitProjectByDxf(file.objects, dxf);
         if (!split) {
           warnings.push(
-            `${dxfName} doesn't line up with ${modelName} — they look like exports of different ` +
-              `revisions — so cabinets were worked out from the model alone. Export both again from ` +
-              `the final project to get PolyBoard's cabinet names.`
+            `${dxfName} doesn't line up with ${modelName} (${dxfMismatch(file.objects, dxf)}) — they ` +
+              `look like exports of different revisions — so cabinets were worked out from the model ` +
+              `alone. Export both again from the final project to get PolyBoard's cabinet names.`
           );
         }
       } catch (err) {

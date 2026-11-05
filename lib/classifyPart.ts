@@ -120,6 +120,9 @@ export function classifyPart(name: string): Classification {
   if (norm.startsWith("filler front")) return { groupKey: "Filler - Front" };
   if (norm.startsWith("filler")) return { groupKey: "Filler" };
 
+  // 7b) INFILLS — strips closing the gap between a divider and a side
+  if (norm.includes("infill")) return { groupKey: "Infill" };
+
   // 8) STANDARD CARCASS — longest-match-wins (ordered longest first)
   // Fixed Shelf before generic Shelf; Mobile Shelf is a removable shelf variant
   const carcassPrefixes: [string, string][] = [
@@ -164,6 +167,13 @@ export const DEFAULT_EXPLODE_OFFSETS: Record<string, [number, number, number]> =
   // name), so they move like the parent group
   "Vertical Division - Centre": [0, 1, 0],
   "Vertical Division - Outer": [0, 1, 0],
+  // Dividers standing between the bottom and a fixed shelf, the panel that
+  // caps them, and the strips and dressing panels that go with them. Also
+  // split by geometry, never by name.
+  "Vertical Division - Frame": [0, 1, 0],
+  "Fixed Shelf - Frame": [0, 0, 0.8],
+  Infill: [0, -1, 0],
+  "End Panel": [1, 0, 0],
   "Left Side": [-1, 0, 0],
   "Right Side": [1, 0, 0],
   Back: [0, 0, 1.2],
