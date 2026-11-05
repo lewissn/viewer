@@ -160,6 +160,9 @@ function fittingJoint(
   return null;
 }
 
+/** How far apart two panel faces can be and still be called touching (mm) */
+const JOINT_TOLERANCE = 1.5;
+
 /** Fallback travel directions tried when a part's own path in is blocked */
 const AXIS_DIRECTIONS: Vec3[] = [
   { x: 1, y: 0, z: 0 },
@@ -430,6 +433,13 @@ export class AssemblyGuideController {
     // (dresser units have FF rails whose names don't say which panel they
     // belong to — tall rails go with the sides, wide rails with the top)
     this.refineFaceFrameGroups();
+
+    // A "divider" outside the sides is a dressing panel, not a divider
+    this.refineEndPanels();
+
+    // Dividers between the bottom and a fixed shelf are a frame the rest of
+    // the cabinet is built onto. Not on an upper unit, built from the top down.
+    if (!overrides?.bottomOverlaysSides) this.refineLowerFrame();
 
     // Split "Fixed Shelf" into centre/outer by geometry on multi-divider units
     // (shelves trapped between two dividers have to be built into the divider
@@ -1160,6 +1170,66 @@ export class AssemblyGuideController {
       return;
     }
     this.refineDividerGroups(dividers, centreShelves, widthAxis);
+  }
+
+  /** Panels of one group, with their bounds */
+  private panelsWithBounds(groupKey: string) {
+    return this.allParts.flatMap((part) => {
+      if (part.groupKey !== groupKey || part.isFitting) return [];
+      const box = this.getPartWorldBounds(part);
+      return box ? [{ part, box }] : [];
+    });
+  }
+
+  /**
+   * PolyBoard calls any upright board a "Vertical Division", including an end
+   * panel dressing the outside of a side. One lying beyond the sides divides
+   * nothing, so it must not steer the build as a divider would.
+   */
+  private refineEndPanels() {
+    const left = this.getGroupWorldBounds("Left Side");
+    const right = this.getGroupWorldBounds("Right Side");
+    if (!left || !right) return;
+    // The axis the sides stand apart along
+    const axis = AXES.reduce((best, a) =>
+      Math.abs(boxMid(left, a) - boxMid(right, a)) > Math.abs(boxMid(left, best) - boxMid(right, best)) ? a : best
+    );
+    const lo = Math.min(left.min[axis], right.min[axis]);
+    const hi = Math.max(left.max[axis], right.max[axis]);
+    for (const { part, box } of this.panelsWithBounds("Vertical Division")) {
+      if (box.max[axis] <= lo + JOINT_TOLERANCE || box.min[axis] >= hi - JOINT_TOLERANCE) {
+        part.groupKey = "End Panel";
+        log(`End panel: "${part.name}" lies outside the sides`);
+      }
+    }
+  }
+
+  /**
+   * Find dividers standing on the bottom panel with a fixed shelf capping them:
+   * a wardrobe's drawer section. The shelf spans the dividers rather than sitting
+   * between them, so nothing is trapped and the three go together as a frame.
+   */
+  private refineLowerFrame() {
+    const bottom = this.getGroupWorldBounds("Bottom");
+    if (!bottom) return;
+    const shelves = this.panelsWithBounds("Fixed Shelf");
+    const dividers = this.panelsWithBounds("Vertical Division");
+    for (const up of AXES) {
+      const across = AXES.filter((a) => a !== up);
+      for (const shelf of shelves) {
+        for (const { part, box } of dividers) {
+          const standsOnBottom = Math.abs(box.min[up] - bottom.max[up]) <= JOINT_TOLERANCE;
+          const capped = Math.abs(box.max[up] - shelf.box.min[up]) <= JOINT_TOLERANCE;
+          const spanned = across.every(
+            (a) => shelf.box.min[a] <= box.min[a] + JOINT_TOLERANCE && shelf.box.max[a] >= box.max[a] - JOINT_TOLERANCE
+          );
+          if (!standsOnBottom || !capped || !spanned) continue;
+          part.groupKey = "Vertical Division - Frame";
+          shelf.part.groupKey = "Fixed Shelf - Frame";
+          log(`Lower frame: "${part.name}" stands between the bottom and "${shelf.part.name}"`);
+        }
+      }
+    }
   }
 
   /**
@@ -2279,6 +2349,10 @@ export class AssemblyGuideController {
    */
   private frameVisibleParts(animate = true) {
     try {
+      // The viewer's fit divides by the canvas width: at zero the camera goes
+      // to infinity, and every later fit starts from there
+      const canvas = this.viewerEngine?.GetCanvas?.();
+      if (canvas && (canvas.width === 0 || canvas.height === 0)) return;
       const visibleParts = this.allParts.filter((p) => p.threeMesh.visible !== false);
       if (visibleParts.length === 0) return;
       const visible = new Set(

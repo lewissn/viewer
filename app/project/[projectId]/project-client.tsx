@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cabinetDisplayName, type Project, type CabinetInstance } from "@/lib/projects";
@@ -25,6 +25,8 @@ interface Props {
 /** Space kept between the wizard card and the model (px) */
 const CARD_GAP = 16;
 const NO_INSET = { right: 0, bottom: 0 };
+/** Most of the main area the card may take from the model */
+const MAX_INSET_SHARE = 0.6;
 
 export default function ProjectClient({ project }: Props) {
   const searchParams = useSearchParams();
@@ -117,11 +119,12 @@ export default function ProjectClient({ project }: Props) {
       });
 
       const loadId = ++loadIdRef.current;
+      const current = () => loadId === loadIdRef.current;
       const OV = await import("online-3d-viewer");
       // A newer load started while the viewer library was loading (a second
       // cabinet click, or React re-running the effect) — let that one win,
       // or both would mount a viewer and the stale one stays on top.
-      if (loadId !== loadIdRef.current || !containerRef.current) return;
+      if (!current() || !containerRef.current) return;
       containerRef.current.innerHTML = "";
 
       const controller = new AssemblyGuideController();
@@ -170,7 +173,10 @@ export default function ProjectClient({ project }: Props) {
           isDark ? new OV.RGBColor(20, 20, 20) : new OV.RGBColor(90, 90, 90),
           30
         ),
+        // A viewer torn down by a newer load can still finish: it must not
+        // switch off the spinner or show an error for the cabinet replacing it
         onModelLoaded: () => {
+          if (!current()) return;
           setLoading(false);
           controller.initDynamic(
             embeddedViewer,
@@ -199,6 +205,7 @@ export default function ProjectClient({ project }: Props) {
           }
         },
         onModelLoadFailed: () => {
+          if (!current()) return;
           setLoading(false);
           setLoadError(
             "Failed to load the 3D model. Please try again later."
@@ -296,7 +303,10 @@ export default function ProjectClient({ project }: Props) {
   // left instead of sitting behind the card.
   const [cardInset, setCardInset] = useState({ right: 0, bottom: 0 });
   const wizardShown = wizardOpen && !loading && !loadError && !!activeCabinet?.modelFileUrl;
-  useEffect(() => {
+  // Measured before paint as well as on changes. The card last showed for a
+  // moment during hydration, when the stylesheet may not have applied and it
+  // measures as wide as the page; the viewer must never lay out on that.
+  useLayoutEffect(() => {
     const card = cardRef.current;
     const main = mainRef.current;
     if (!wizardShown || !card || !main) return;
@@ -304,12 +314,14 @@ export default function ProjectClient({ project }: Props) {
     const measure = () => {
       const c = card.getBoundingClientRect();
       const m = main.getBoundingClientRect();
+      const inset = (space: number, size: number) => Math.min(Math.max(0, space + CARD_GAP), size * MAX_INSET_SHARE);
       setCardInset(
         wide.matches
-          ? { right: Math.max(0, m.right - c.left + CARD_GAP), bottom: 0 }
-          : { right: 0, bottom: Math.min(Math.max(0, m.bottom - c.top + CARD_GAP), m.height * 0.55) }
+          ? { right: inset(m.right - c.left, m.width), bottom: 0 }
+          : { right: 0, bottom: inset(m.bottom - c.top, m.height) }
       );
     };
+    measure();
     const observer = new ResizeObserver(measure);
     observer.observe(card);
     observer.observe(main);
@@ -327,6 +339,9 @@ export default function ProjectClient({ project }: Props) {
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
+      // Nothing to draw into. Fitting the camera to a zero-sized canvas would
+      // put it at infinity for good, leaving the model invisible.
+      if (el.clientWidth === 0 || el.clientHeight === 0) return;
       try {
         viewerRef.current?.Resize?.();
       } catch {
@@ -377,7 +392,13 @@ export default function ProjectClient({ project }: Props) {
     setWizardOpen(false);
   }
   function handleReopen() {
-    controllerRef.current?.restart();
+    // Back to the step they were on; hiding the card shows the finished cabinet
+    // but shouldn't cost them their place in the build
+    if (state.currentStep >= 0 && state.currentStep < state.totalSteps) {
+      controllerRef.current?.jumpToStep(state.currentStep);
+    } else {
+      controllerRef.current?.restart();
+    }
     setWizardOpen(true);
   }
 
@@ -634,7 +655,7 @@ export default function ProjectClient({ project }: Props) {
         {wizardOpen && !loading && !loadError && hasCabinet && (
           <div
             ref={cardRef}
-            className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[360px] sm:max-w-[420px] lg:left-auto lg:right-6 lg:translate-x-0 lg:w-[380px] lg:min-w-0"
+            className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-[400px] lg:left-auto lg:right-6 lg:translate-x-0 lg:w-[380px]"
           >
             <div className="backdrop-blur-xl bg-[var(--card-bg)] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] overflow-y-auto max-h-[70vh] lg:max-h-[calc(100vh-6.5rem)] border border-[var(--sidebar-border)]/50">
               {/* Progress bar */}
@@ -750,9 +771,18 @@ export default function ProjectClient({ project }: Props) {
                 {/* Step state */}
                 {currentStepData && !isComplete && (
                   <>
-                    <p className="text-[12px] text-[var(--muted)] mb-1">
-                      Step {stepIndex + 1} of {state.totalSteps}
-                    </p>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[12px] text-[var(--muted)]">
+                        Step {stepIndex + 1} of {state.totalSteps}
+                      </p>
+                      {/* Up here, clear of Next: a stray tap mustn't lose the card */}
+                      <button
+                        onClick={handleClose}
+                        className="text-[12px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                      >
+                        Hide guide
+                      </button>
+                    </div>
                     {currentStepData.standUp && (
                       <StepCallout title="Stand the cabinet upright">
                         With the back fitted, lift the cabinet onto its base before carrying on.
@@ -831,23 +861,15 @@ export default function ProjectClient({ project }: Props) {
                       >
                         Back
                       </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleClose}
-                          className="text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-                        >
-                          Close
-                        </button>
-                        <button
-                          onClick={handleNext}
-                          disabled={state.isAnimating}
-                          className="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-medium hover:opacity-90 transition-colors active:scale-95 disabled:opacity-50"
-                        >
-                          {stepIndex + 1 >= state.totalSteps
-                            ? "Finish"
-                            : "Next"}
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleNext}
+                        disabled={state.isAnimating}
+                        className="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-medium hover:opacity-90 transition-colors active:scale-95 disabled:opacity-50"
+                      >
+                        {stepIndex + 1 >= state.totalSteps
+                          ? "Finish"
+                          : "Next"}
+                      </button>
                     </div>
                   </>
                 )}

@@ -55,14 +55,19 @@ export function buildCabinetSummary(
 
   // The controller splits dividers into centre/outer when shelves are trapped
   const dividerCount =
-    count("Vertical Division") + count("Vertical Division - Centre") + count("Vertical Division - Outer");
+    count("Vertical Division") +
+    count("Vertical Division - Centre") +
+    count("Vertical Division - Outer") +
+    count("Vertical Division - Frame");
   // Multi-divider units have their shelves split into centre/outer subgroups by
-  // geometric refinement, so the total spans all three keys.
+  // geometric refinement, so the total spans every key.
   const fixedShelfCount =
     count("Fixed Shelf") +
     count("Fixed Shelf - Centre") +
-    count("Fixed Shelf - Outer");
+    count("Fixed Shelf - Outer") +
+    count("Fixed Shelf - Frame");
   const centreShelfCount = count("Fixed Shelf - Centre");
+  const lowerFrame = has("Vertical Division - Frame");
   const hasRearBrace = has("Rear Brace");
   const overlayBottom = flags.bottomOverlaysSides ?? false;
   const overlayTop = flags.topOverlaysSides ?? false;
@@ -166,12 +171,16 @@ export function buildCabinetSummary(
         ? `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first, out from the centre divider — ${inner} up once the dividers meet the base panel, so those shelves cannot be added later.`
         : `${dividerCount} dividers make ${dividerCount + 1} columns. Build the dividers and their shelves as one assembly first — ${inner} up once the dividers meet the base panel, so those shelves cannot be added later.`
     );
+  } else if (lowerFrame) {
+    notes.push(
+      "The dividers go between the bottom and the fixed shelf first, and the sides and top are built around them."
+    );
   } else if (dividerCount > 0) {
     notes.push(
       "Dividers form the inner structure and must be connected early."
     );
   }
-  if (fixedShelfCount > 0 && centreShelfCount === 0) {
+  if (fixedShelfCount > 0 && centreShelfCount === 0 && !lowerFrame) {
     notes.push("Fixed shelves must be installed before side panels.");
   }
   if (hasFaceFrames) {

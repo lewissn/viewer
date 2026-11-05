@@ -11,6 +11,10 @@
  *   controller), the inner assembly is built first and the surrounding panels
  *   are brought to it — dividers, centre shelves, outer shelves, base, top,
  *   sides. Those shelves cannot be inserted once the dividers meet the base.
+ * - Lower-frame flow: when dividers stand between the bottom and a fixed shelf
+ *   (a wardrobe's drawer section, split out geometrically by the controller),
+ *   that frame comes first, then its infills and the plinths, then one side,
+ *   the top and the other side.
  * - Face frames: early (cam access)
  * - Rear brace: after back
  * - Overlay bottom (upper unit): base step after sides when flag set
@@ -185,7 +189,8 @@ export function generateSteps(
   // Two flows based on whether the cabinet has vertical dividers:
   // - No-divider flow: sequential side-by-side assembly (Left Side anchors the build)
   // - Divider flow: base, then dividers, then top, then both sides
-  const noDividerFlow = !hasDivider && !bottomOverlaysSides;
+  const lowerFrame = has("Vertical Division - Frame");
+  const noDividerFlow = !hasDivider && !bottomOverlaysSides && !lowerFrame;
 
   // Face-frame parts the carcass flow could not anchor to an early step; the
   // late overlay-top step picks these up so they never fall to the end.
@@ -449,9 +454,11 @@ export function generateSteps(
     // an upper unit (which is built top-down).
     const dividerAnchor = bottomOverlaysSides
       ? "the top panel"
-      : hasBottom
-        ? "the bottom panel"
-        : "the base";
+      : lowerFrame
+        ? "the fixed shelf"
+        : hasBottom
+          ? "the bottom panel"
+          : "the base";
 
     const addDividerStep = () => {
       const hasFF = dividerKeys.some((k) => k.startsWith("Face Frame"));
@@ -673,7 +680,57 @@ export function generateSteps(
       );
     };
 
-    if (assemblyFirst) {
+    // Dividers standing between the bottom and a fixed shelf make a rigid frame
+    // that everything else is built onto, so it goes together first. Each side
+    // is a step of its own, with the top between them: the top is held by the
+    // first side while the second is brought up to close the carcass.
+    const addLowerFrameSteps = () => {
+      addStep(
+        ["Bottom", "Vertical Division - Frame"],
+        "Fix the dividers onto the bottom panel.",
+        {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Before tightening",
+              content:
+                "With the front edges facing the floor, stand each divider on the bottom panel and lock the cams. Check it is square before tightening.",
+            },
+          ],
+        }
+      );
+      addStep(
+        ["Fixed Shelf - Frame"],
+        "Fit the fixed shelf on top of the dividers, so they sit between it and the bottom.",
+        { usesFittings: true }
+      );
+      addStep(
+        ["Infill", "Plinth"],
+        has("Infill") && hasPlinth
+          ? "Fit the infills to the dividers, and the plinths beneath the bottom."
+          : has("Infill")
+            ? "Fit the infills to the dividers."
+            : "Fit the plinths beneath the bottom.",
+        { usesFittings: true }
+      );
+
+      const leftKeys: GroupKey[] = ["Left Side"];
+      if (has("Face Frame - Left")) leftKeys.push("Face Frame - Left");
+      addStep(leftKeys, "Attach the left side.", { usesFittings: true });
+
+      // Anything still standing above the frame goes on while the far side is open
+      addDividerStep();
+      addFixedShelfStep();
+      addTopStep();
+
+      const rightKeys: GroupKey[] = ["Right Side"];
+      if (has("Face Frame - Right")) rightKeys.push("Face Frame - Right");
+      addStep(rightKeys, "Attach the right side to close the carcass.", { usesFittings: true });
+    };
+
+    if (lowerFrame) {
+      addLowerFrameSteps();
+    } else if (assemblyFirst) {
       // Shelves are trapped between dividers, so the inner assembly is built
       // first and the surrounding panels are brought to it:
       //   dividers -> centre shelves -> outer shelves -> base -> top -> sides
@@ -702,30 +759,32 @@ export function generateSteps(
     }
 
     // ── Sides + Face Frame Left/Right ──
-    const sidesKeys: GroupKey[] = ["Left Side", "Right Side"];
-    if (has("Face Frame - Left")) sidesKeys.push("Face Frame - Left");
-    if (has("Face Frame - Right")) sidesKeys.push("Face Frame - Right");
-    addStep(
-      sidesKeys,
-      sidesKeys.some((k) => k.startsWith("Face Frame"))
-        ? "Attach the left and right sides, with their face frame pieces attached."
-        : "Attach the left and right sides.",
-      {
-        usesFittings: true,
-        helpers: [
-          {
-            title: "Before tightening",
-            content:
-              "With the cabinet still front-edges-down, position each side panel with cam screws aligned and fasten. Do not over-tighten Rafix cams.",
-          },
-          {
-            title: "Professional tip",
-            content:
-              "This stage can be heavy — have a second person hold the sides while you lock the cams for easier alignment.",
-          },
-        ],
-      }
-    );
+    if (!lowerFrame) {
+      const sidesKeys: GroupKey[] = ["Left Side", "Right Side"];
+      if (has("Face Frame - Left")) sidesKeys.push("Face Frame - Left");
+      if (has("Face Frame - Right")) sidesKeys.push("Face Frame - Right");
+      addStep(
+        sidesKeys,
+        sidesKeys.some((k) => k.startsWith("Face Frame"))
+          ? "Attach the left and right sides, with their face frame pieces attached."
+          : "Attach the left and right sides.",
+        {
+          usesFittings: true,
+          helpers: [
+            {
+              title: "Before tightening",
+              content:
+                "With the cabinet still front-edges-down, position each side panel with cam screws aligned and fasten. Do not over-tighten Rafix cams.",
+            },
+            {
+              title: "Professional tip",
+              content:
+                "This stage can be heavy — have a second person hold the sides while you lock the cams for easier alignment.",
+            },
+          ],
+        }
+      );
+    }
 
     // ── Overlay bottom (AFTER sides when flag set) ──
     if (bottomOverlaysSides && (hasBottom || hasPlinth)) {
@@ -751,6 +810,9 @@ export function generateSteps(
       );
     }
   }
+
+  // ── Infills outside the lower frame, once the sides they meet are on ──
+  if (!lowerFrame) addStep(["Infill"], "Fit the infills.", { usesFittings: true });
 
   // ── Back ──
   // A thin back slides into grooves and squares the carcass before the top
@@ -851,6 +913,9 @@ export function generateSteps(
       { usesFittings: true }
     );
   }
+
+  // ── End panel (dresses the outside of a side, on the finished carcass) ──
+  addStep(["End Panel"], "Fix the end panel to the outside of the cabinet.");
 
   // ── Hanging rail (inside the finished carcass, before the doors close it) ──
   addStep(["Hanging Rail"], "Fit the hanging rail between the sides.", {
