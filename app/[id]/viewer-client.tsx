@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 import {
-  findFrontMountedParts,
+  findFrontParts,
   isFrontPartName,
   meshWorldBounds,
 } from "@/lib/frontParts";
@@ -584,7 +584,7 @@ export default function ViewerClient({ modelUrls, jobNumber }: Props) {
 
 /**
  * Mesh instances the "Doors" toggle hides: every door and drawer front, plus
- * the handles, knobs and hinge cups mounted on them.
+ * the handles and knobs mounted on them. Hinges and other carcass hardware stay.
  */
 function collectFrontMeshInstances(viewer: any): Set<any> {
   const parts: { instance: any; bounds: ReturnType<typeof meshWorldBounds>; isFront: boolean }[] = [];
@@ -599,12 +599,8 @@ function collectFrontMeshInstances(viewer: any): Set<any> {
     // Model structure unavailable — the toggle then hides nothing
   }
 
-  const mounted = findFrontMountedParts(parts);
-  const result = new Set<any>();
-  parts.forEach((p, i) => {
-    if (p.isFront || mounted.has(i)) result.add(p.instance);
-  });
-  return result;
+  const hidden = findFrontParts(parts);
+  return new Set(parts.filter((_, i) => hidden.has(i)).map((p) => p.instance));
 }
 
 /* ─── Shared button component ─── */

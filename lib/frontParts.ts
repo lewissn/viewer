@@ -1,10 +1,12 @@
 /**
  * Door and drawer front detection for the 3D viewer's "hide doors" control.
  *
- * Fronts are found by name. What is mounted on them — handles, knobs, hinge
- * cups — has to be found by position: the 3DS export names those after
- * whichever panel came last (e.g. "Plinth 1 [1] 307"), so hiding fronts by name
- * alone leaves their handles floating in front of the cabinet.
+ * Fronts are found by name and shape. The 3DS export names hardware after
+ * whichever panel came last, so a door cabinet's hinges, cam covers and back
+ * fixings all come out as "Door 1 (Single) [1] 23": a name match only counts
+ * as a front when the part is also panel-shaped. Handles and knobs are found by
+ * position instead, so they don't float in front of the cabinet once the doors
+ * are hidden. Hardware fixed to the carcass (hinges included) always stays.
  */
 
 import { classifyPart } from "./classifyPart";
@@ -28,12 +30,16 @@ const FRONT_GROUP_KEYS = new Set(["Door", "Drawer"]);
 
 /**
  * Hardware mounted on a front sits within this distance of its faces. Handles
- * and knobs project 25–40mm; hinge cups sit inside the door. Kept in proportion
- * to the front's thickness so the check holds whatever units the model uses.
+ * and knobs project 25–40mm. Kept in proportion to the front's thickness so
+ * the check holds whatever units the model uses.
  */
 const MOUNT_DEPTH_RATIO = 4;
 
-/** True for a door or drawer front. Drawer box sides, backs and bottoms are not fronts. */
+/**
+ * True when the name is a door or drawer front's. Drawer box sides, backs and
+ * bottoms are not fronts. Hardware can carry a front's name too — see
+ * findFrontParts for the shape check that separates them.
+ */
 export function isFrontPartName(name: string): boolean {
   return DOOR_PATTERN.test(name) || FRONT_GROUP_KEYS.has(classifyPart(name).groupKey);
 }
@@ -48,36 +54,46 @@ function overlaps(a: Bounds, b: Bounds, tol: number): boolean {
 }
 
 /**
- * Indices of the parts mounted on a front.
+ * Indices of the parts the "hide doors" control hides: each door and drawer
+ * front, plus the handles and knobs mounted on it.
  *
- * A part counts as mounted when it lies within a front's face, stays close to
- * it in depth, and touches no carcass panel. The last test is what separates a
- * handle from a hinge plate or cam: those are screwed to the carcass, so they
- * stay put when the doors are hidden.
+ * `isFront` is the name match. It only makes a front of a panel-shaped part;
+ * anything smaller that carries a front's name is hardware and is judged by
+ * position like the rest.
+ *
+ * Hardware counts as mounted on a front when it lies within the front's face,
+ * stays close to it in depth, and touches no carcass panel. The last test is
+ * what separates a handle from a hinge, cam or shelf pin: those are screwed to
+ * the carcass, so they stay put when the doors are hidden.
  *
  * Works on a whole-project model with many cabinets side by side, so it does
  * not rely on which way the fronts face.
  */
-export function findFrontMountedParts(
+export function findFrontParts(
   parts: { bounds: Bounds | null; isFront: boolean }[]
 ): Set<number> {
+  const result = new Set<number>();
   const fronts: Bounds[] = [];
   const carcass: Bounds[] = [];
 
   // Panels are what everything else is measured against. A part is a panel
   // when its two larger dimensions are both well over its thickness — that
-  // rules out handles, knobs, cams and screws whatever their name says.
-  for (const p of parts) {
-    if (!p.bounds) continue;
-    if (p.isFront) fronts.push(p.bounds);
-    else if (isPanel(p.bounds)) carcass.push(p.bounds);
-  }
+  // rules out handles, knobs, hinges and screws whatever their name says.
+  // A name match without bounds is taken at its word.
+  parts.forEach((p, i) => {
+    const panel = p.bounds !== null && isPanel(p.bounds);
+    if (p.isFront && (panel || !p.bounds)) {
+      result.add(i);
+      if (p.bounds) fronts.push(p.bounds);
+    } else if (panel) {
+      carcass.push(p.bounds!);
+    }
+  });
 
-  const mounted = new Set<number>();
-  if (fronts.length === 0) return mounted;
+  if (fronts.length === 0) return result;
 
   parts.forEach((p, i) => {
-    if (p.isFront || !p.bounds || isPanel(p.bounds)) return;
+    if (result.has(i) || !p.bounds || isPanel(p.bounds)) return;
     const b = p.bounds;
 
     const onFront = fronts.some((fb) => {
@@ -102,10 +118,10 @@ export function findFrontMountedParts(
       const tol = Math.min(extent(cb, "x"), extent(cb, "y"), extent(cb, "z")) * 0.05;
       return overlaps(b, cb, tol);
     });
-    if (!touchesCarcass) mounted.add(i);
+    if (!touchesCarcass) result.add(i);
   });
 
-  return mounted;
+  return result;
 }
 
 function isPanel(b: Bounds): boolean {
